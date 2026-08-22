@@ -1,0 +1,32 @@
+[project]
+name = "lgbm-panel-data"
+version = "0.1.0"
+description = "LightGBM guide and utilities for panel / time-series forecasting."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "jfrie" }]
+keywords = ["lightgbm", "forecasting", "timeseries", "panel", "ml"]
+
+[project.optional-dependencies]
+dev = ["ruff", "pytest"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6.0",
+    "pytest>=8.0.0",
+]
+
+[tool.uv]
+# Python environments in this project are managed exclusively with `uv`.
+# See the "uv-only" skill for the full workflow.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
