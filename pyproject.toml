@@ -8,9 +8,6 @@ license = { text = "MIT" }
 authors = [{ name = "jfrie" }]
 keywords = ["lightgbm", "forecasting", "timeseries", "panel", "ml"]
 
-[project.optional-dependencies]
-dev = ["ruff", "pytest"]
-
 [dependency-groups]
 dev = [
     "ruff>=0.6.0",
