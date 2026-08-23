@@ -18,7 +18,7 @@ Erkenntnis-Ziele:
 - Levels: Extrapolationsproblem bei Trend (siehe E2).
 - Direkte Log-Differenzen: stabil ueber alle Horizonte, kein Schneeball.
 - Rekursive Log-Differenzen: Fehler akkumulieren mit dem Horizont, weil jede
-  Stufe mit der Unsicherheit der vorherigen Prognosen rechnet.
+  Stufe auf den Unschaerfen der vorherigen Prognosen aufbaut.
 """
 
 from __future__ import annotations
@@ -26,18 +26,19 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from _common import save_fig, save_result
 
 from lgbm_panel.data import make_panel
 from lgbm_panel.experiments import ModelSpec, expanding_backtest
 from lgbm_panel.features import FeatureConfig, build_supervised
 from lgbm_panel.strategies import DirectLGBM
 
-from _common import save_fig, save_result
-
 HZ = (1, 3, 6, 12, 18)
 N_FOLDS = 3
+# Explizit ohne Exogena: verhindert, dass Hilfsspalten als Features einschleppen.
+DIRECT_CFG = FeatureConfig(exog_cols=())
 
-# Feature-Set des rekursiven Modells (muss im Rollout manuell gespiegelt werden).
+# Feature-Set des rekursiven Modells (wird im Rollout manuell gespiegelt).
 R_LAGS = (1, 2, 3, 6, 12)
 R_WINDOWS = (3, 12)
 RCFG = FeatureConfig(
@@ -59,7 +60,7 @@ def _fold_ends(grid: pd.DatetimeIndex, step: int) -> list[pd.Timestamp]:
 
 
 def _row_from_history(hist: np.ndarray, date: pd.Timestamp) -> dict[str, float]:
-    """Feature-Zeile im build_supervised-Semantik von RCFG."""
+    """Feature-Zeile in build_supervised-Semantik von RCFG."""
     row: dict[str, float] = {}
     for k in R_LAGS:
         row[f"lag_{k}"] = hist[-k]
@@ -93,13 +94,12 @@ def run() -> dict:
         step_months=max(HZ),
     )
 
-    # ---------------------------------------------------- 2) Direct auf Log-Diff
-    sup = build_supervised(log_df, horizons=HZ).merge(
+    # ---------------------------------------------------- 2) Direkt auf Log-Diff
+    sup = build_supervised(log_df, horizons=HZ, config=DIRECT_CFG).merge(
         log_df[["series", "date", "value"]].rename(columns={"value": "y_ref"}),
         on=["series", "date"],
         how="left",
     )
-    # y und pred sind nach Training Log-Aenderungen; Rekonstruktion unten.
     sup["y_change"] = sup["y"] - sup["y_ref"]
     direct_rows = []
     for i, fe in enumerate(ends, start=1):
@@ -108,27 +108,30 @@ def run() -> dict:
         test = sup[(sup["target_date"] > fe) & (sup["target_date"] <= hi)]
         if train.empty or test.empty:
             continue
-        m = DirectLGBM(horizons=HZ).fit(
-            train.assign(y=train["y_change"]), num_boost_round=300
+        # Label: h-Schritt-Log-Aenderung; Features bleiben Log-Lags/Rolling/Kalender.
+        model = DirectLGBM(horizons=HZ).fit(
+            train.assign(y=train["y_change"]), config=DIRECT_CFG, num_boost_round=300
         )
-        p = m.predict(test)
+        p = model.predict(test)
         p["level_pred"] = np.exp(p["y_ref"] + p["pred"])
-        p["truth"] = np.exp(p["y"] + p["y_ref"])
+        p["truth"] = np.exp(p["y"])  # y ist hier noch das Log-Level zum Ziel.
+        p["L0"] = np.exp(p["y_ref"])  # letzter beobachteter Level am Origin.
         p["fold"] = i
         direct_rows.append(p)
     direct_ld = pd.concat(direct_rows, ignore_index=True)
 
-    # ------------------------------------------------- 3) Recursive auf Log-Diff
+    # ------------------------------------------------- 3) Rekursiv auf Log-Diff
     sup1 = build_supervised(log_df, horizons=(1,), config=RCFG).merge(
         log_df[["series", "date", "value"]].rename(columns={"value": "y_ref"}),
         on=["series", "date"],
         how="left",
     )
     sup1 = sup1.dropna(subset=["y_ref"])
-    rec_model = DirectLGBM(horizons=(1,)).fit(
-        sup1.assign(y=sup1["y"] - sup1["y_ref"]), num_boost_round=300
+    # Kein Series-Kategorial: der Rollout kennt nur die Historie der Serie.
+    rec_model = DirectLGBM(horizons=(1,), categorical=()).fit(
+        sup1.assign(y=sup1["y"] - sup1["y_ref"]), config=RCFG, num_boost_round=300
     )
-    feat_cols = list(_row_from_history(np.zeros(24), pd.Timestamp("2020-01-01")))
+    feat_cols = list(_row_from_history(np.zeros(max(R_LAGS)), pd.Timestamp("2020-01-01")))
 
     recursive_rows = []
     log_hist = {
@@ -149,22 +152,23 @@ def run() -> dict:
                 x = pd.DataFrame([row])[feat_cols]
                 d = float(rec_model.models[1].predict(x)[0])
                 changes.append(d)
-                hist.append(v_end + sum(changes))
+                hist.append(v_end + sum(changes))  # Prognose statt Beobachtung.
                 cur = cur + pd.DateOffset(months=1)
                 tgt = targets[h - 1]
+                lvl0 = float(np.exp(v_end))
                 recursive_rows.append({
                     "series": s,
                     "target_date": tgt,
                     "horizon": h,
                     "level_pred": float(np.exp(v_end + sum(changes[:h]))),
                     "truth": float(level_lookup[(s, tgt)]),
-                    "y_ref": float(np.exp(v_end)),
+                    "L0": lvl0,
                     "fold": i,
                 })
     recursive_ld = pd.DataFrame(recursive_rows)
 
     # ------------------------------------------------------------------ Auswertung
-    def evaluate(preds: pd.DataFrame, name: str) -> dict:
+    def evaluate(preds: pd.DataFrame, name: str) -> dict[str, dict]:
         out = {}
         for h, grp in preds.groupby("horizon"):
             ok = grp.dropna(subset=["level_pred", "truth"])
@@ -173,8 +177,8 @@ def run() -> dict:
                 "rmse": float(np.sqrt(np.mean((ok["truth"] - ok["level_pred"]) ** 2))),
                 "dir_acc": float(
                     np.mean(
-                        np.sign(ok["level_pred"] - ok["y_ref"])
-                        == np.sign(ok["truth"] - ok["y_ref"])
+                        np.sign(ok["level_pred"] - ok["L0"])
+                        == np.sign(ok["truth"] - ok["L0"])
                     )
                 ),
             }
@@ -184,7 +188,7 @@ def run() -> dict:
     summary.update(
         {
             m: {
-                str(int(h)): {k: v for k, v in row.items()}
+                str(int(h)): row
                 for h, row in grp.set_index("horizon")
                 [["mae", "rmse", "smape", "dir_acc"]].to_dict("index").items()
             }
@@ -203,7 +207,7 @@ def run() -> dict:
         "direct_logdiff": "#00798c",
     }
     labels = {
-        "direct_level": "Direct auf Levels",
+        "direct_level": "Direkt auf Levels",
         "seasonal_naive": "Seasonal Naive",
         "recursive_logdiff": "Rekursiv auf Log-Diffs",
         "direct_logdiff": "Direkt auf Log-Diffs",
@@ -224,7 +228,7 @@ def run() -> dict:
         ax.grid(alpha=0.3, which="both")
         ax.legend(fontsize=8, frameon=False)
     fig.suptitle(
-        "E6: Level- vs. Log-Differenz-Prognosen - direkte Formulierung schlaegt Rekursion",
+        "E6: Level- vs. Log-Differenz-Prognosen - direkte Formulierung vs. Rekursion",
         fontsize=12,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
