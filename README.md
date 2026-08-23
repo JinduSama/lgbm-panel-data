@@ -27,6 +27,8 @@ JSON metrics) land in `reports/`. The self-contained insight report is
 | `studies/e3_feature_ablation.py` | Which feature families describe the series? |
 | `studies/e4_causal.py` | Causal plausibility: intervention study |
 | `studies/e5_m4.py` | M4 monthly benchmark (400 series) |
+| `studies/e6_levels_vs_logdiff.py` | Levels vs. log-diffs, direct vs. recursive, across five trend regimes |
+| `studies/e7_gallery.py` | Forecast gallery: M4 samples + one series per E6 regime |
 
 ```bash
 uv run python studies/e1_scenarios.py   # run one study

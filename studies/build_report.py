@@ -147,6 +147,7 @@ def main() -> None:
         '<nav class="toc"><ol>'
         "<li><a href='#tldr'>Kernbefunde</a></li>"
         "<li><a href='#method'>Methodik im Detail</a></li>"
+        "<li><a href='#gallery'>Zeitreihen-Galerie</a></li>"
         "<li><a href='#e1'>E1 &middot; Szenario-Raster</a></li>"
         "<li><a href='#e2'>E2 &middot; Datenaufbereitung</a></li>"
         "<li><a href='#e3'>E3 &middot; Feature-Ablation</a></li>"
@@ -169,12 +170,12 @@ def main() -> None:
                 e2_ratio = a / b
     e6_ratio = None
     if e6:
-        mm = e6["metrics_on_levels"]
-        if "recursive_logdiff" in mm and "direct_logdiff" in mm:
-            r = mm["recursive_logdiff"].get("18", {}).get("mae")
-            d = mm["direct_logdiff"].get("18", {}).get("mae")
-            if r and d:
-                e6_ratio = r / d
+        regimes = e6["metrics_on_levels"]
+        stark = regimes.get("stark_trendend", {})
+        r = stark.get("recursive_logdiff", {}).get("18", {}).get("mae")
+        d = stark.get("direct_logdiff", {}).get("18", {}).get("mae")
+        if r and d:
+            e6_ratio = r / d
     e4_dir = None
     if e4:
         iv = {r["model"]: r["dir_acc"] for r in e4["intervention"]}
@@ -182,9 +183,20 @@ def main() -> None:
 
     kpis = []
     if e2_ratio:
-        kpis.append((f"{e2_ratio:,.0f}×", "weniger Fehler durch Log-Saisondifferenzen statt Levels (h=12, E2)"))
+        kpis.append(
+            (
+                f"{e2_ratio:,.0f}×",
+                "weniger Fehler durch Log-Saisondifferenzen statt Levels (h=12, E2)",
+            )
+        )
     if e6_ratio:
-        kpis.append((f"{e6_ratio:,.1f}×", "Rekursions-Strafe bei h=18: rekursiv vs. direkt auf Log-Diffs (E6)"))
+        kpis.append(
+            (
+                f"{e6_ratio:,.1f}×",
+                "Rekursions-Strafe bei h=18 auf stabil exponentiellem Trend:"
+                " rekursiv vs. direkt auf Log-Diffs (E6)",
+            )
+        )
     if e4_dir:
         kpis.append((f"{100 * e4_dir:.0f} %", "Directional Accuracy nach Intervention - nur mit Treiber-Pfad (E4)"))
     if e5:
@@ -256,6 +268,38 @@ definierte Richtung (Bewegung 0) werden ausgeschlossen</li>
 als diese Referenz</li>
 </ul>
 </div>""")
+
+    # ------------------------------------------------------------- galerie
+    parts.append("""
+<h2 id="gallery">Zeitreihen-Galerie: Verl&auml;ufe mit Prognosen</h2>
+<p>Metriken komprimieren viel - hier dasselbe bildlich. Alle Modelle
+trainieren ausschlie&szlig;lich auf Daten vor dem gestrichelten Stichtag;
+die schwarze dicke Linie ist die eingetretene Wahrheit.</p>
+""")
+    parts.append(fig(
+        "e7_m4_examples", "M4 Beispiele",
+        "Sechs reale M4-Monatsserien, 18-Monats-Prognose. Typische Muster: "
+        "Seasonal-Naive (orange) wiederholt das Vorjahr exakt - auf trendenden "
+        "Serien bleibt sie strukturell zur&uuml;ck; das Level-LGBM (grau) folgt "
+        "dem Niveau, kann aber Trendkr&uuml;mmung nicht vorwegnehmen; direkt "
+        "Log-Diff (t&uuml;rkis) extrapolieret Wachstumsraten.",
+    ))
+    parts.append("""
+<div class="card finding">
+<strong>Was man hier sieht.</strong> Die drei Prognose-Charaktere lassen sich
+am Verlauf ablesen: Seasonal-Naive = Kopie des Vorjahres; Level-LGBM =
+gegl&auml;ttete Fortschreibung, die bei Kurven zu flach wird; Log-Diff =
+Wachstumsrate-Extrapolation, die bei Trendwechseln (siehe E6/Trendumkehr)
+in die alte Richtung weiterl&auml;uft, solange nichts Neues im Training war.
+</div>""")
+    parts.append(fig(
+        "e7_regime_examples", "Regime-Beispiele",
+        "Je E6-Regime eine Beispielsereie mit allen vier Varianten. Besonders "
+        "in <em>trendumkehr</em>: alle Varianten laufen zun&auml;chst weiter nach "
+        "oben - nur der rekursive Rollout f&auml;ngt sich nach wenigen Monaten, "
+        "weil seine Eingaben mit der realen Abw&auml;rtsentwicklung aktualisiert "
+        "werden.",
+    ))
 
     # ------------------------------------------------------------------ e1
     if e1:
@@ -539,69 +583,96 @@ h&auml;ufiger als die Baselines (siehe results/e5_m4.json).</li>
     if e6:
         mm = e6["metrics_on_levels"]
         parts.append("""
-<h2 id="e6">E6 &middot; Level vs. Log-Differenzen: direkte Formulierung vs. Rekursion</h2>
-<p>Die Kernfrage: <em>Sind direkte Level-Forecasts besser als
-Log-Differenz-Forecasts - und was kostet die Rekursivit&auml;t der
-Differenzen?</em> Vier Varianten auf identischem DGP (starker
-Exponentialtrend + Saison, wie E2, aber Horizonte bis 18 und 1-Monats-
-Aufl&ouml;sung der Kurven):</p>
+<h2 id="e6">E6 &middot; Level vs. Log-Differenzen &uuml;ber f&uuml;nf Trend-Regime</h2>
+<p>Die Kernfragen: <em>Sind direkte Level-Forecasts besser als
+Log-Differenz-Forecasts? Was kostet die Rekursivit&auml;t der Differenzen?
+Und wie &auml;ndert sich die Antwort mit Form und Richtung des Trends?</em>
+F&uuml;nf Regime, jeweils identischer Vier-Vergleich (60 Serien &times; 144 Monate,
+Horizonte 1-18 in Monatsaufl&ouml;sung):</p>
 <ul>
-<li><strong>direct_level</strong>: ein LGBM pro Horizont auf rohen Levels</li>
-<li><strong>seasonal_naive</strong>: Referenz-Baseline</li>
-<li><strong>direct_logdiff</strong>: ein LGBM pro Horizont auf der
-h-Schritt-&Auml;nderung <code>log y[t+h] &minus; log y[t]</code>;
-Rekonstruktion <code>exp(log y[t] + pred)</code> - <strong>keine
-Rekursion</strong>, der Anker ist beobachtet</li>
-<li><strong>recursive_logdiff</strong>: <em>ein</em> Modell f&uuml;r
-1-Schritt-&Auml;nderungen, das f&uuml;r h Schritte weiterspielt und Lags/Rolling
-aus den eigenen Prognosen fortgeschreibt</li>
+<li><strong>kein_trend</strong>: station&auml;r + Saison</li>
+<li><strong>leicht_trendend</strong>: exponentiell, 0.2-0.5&nbsp;%/Monat (&asymp;2.4-6&nbsp;%/Jahr)</li>
+<li><strong>linear_trendend</strong>: additiv +2..6 Einheiten/Monat</li>
+<li><strong>stark_trendend</strong>: exponentiell, 1.2-3&nbsp;%/Monat</li>
+<li><strong>trendumkehr</strong>: +1.5-2.5&nbsp;%/Monat bis Monat 96, danach
+&minus;60&nbsp;% der Rate (Strukturbruch)</li>
 </ul>
+<p>Varianten: <strong>direct_level</strong> (LGBM pro Horizont auf Levels),
+<strong>direct_logdiff</strong> (Label = h-Schritt-Aenderung
+<code>log y[t+h] &minus; log y[t]</code>, Rekonstruktion aus beobachtetem Anker,
+keine Rekursion), <strong>recursive_logdiff</strong> (ein 1-Schritt-Modell,
+Rollout mit eigenen Prognosen als Lags), <strong>seasonal_naive</strong>.</p>
 """)
         parts.append(setup_box(**{
-            "Serien": "60", "Länge": "144 Monate", "Horizonte": "1-18 (jede Stufe)",
+            "Serien": "60 je Regime", "Länge": "144 Monate",
             "Folds": "3 × 18 Monate", "Boosting": "300 Runden",
-            "Rekursiv-Features": "Lags 1/2/3/6/12, roll3/12-mean, month",
+            "Level-Bereich": "80-400 (log-sicher)",
         }))
         parts.append(fig(
-            "e6_levels_vs_logdiff", "Level vs Log-Diff",
-            "Links MAE auf Levels, logarithmische Y-Achse (die Unterschiede sind "
-            "zu gro&szlig; f&uuml;r eine lineare Skala). Rechts Directional Accuracy. "
-            "Die rote Kurve (rekursiv) w&auml;chst fast perfekt linear - das ist "
-            "die Fehler-Akkumulation sichtbar gemacht.",
+            "e6_levels_vs_logdiff", "Level vs Log-Diff ueber Regime",
+            "Ein Panel je Regime, MAE auf Levels, logarithmische Y-Achse. "
+            "Beobachte, wie sich die Ordnung der Kurven zwischen "
+            "<em>stark_trendend</em> und <em>trendumkehr</em> umkehrt.",
         ))
-        parts.append("<h3>Metriken auf Levels (alle Horizonte)</h3>")
-        parts.append(metrics_table(mm, values=("mae", "dir_acc"), digits=2,
-                                   lower_is_better={"dir_acc": False}))
+
+        def e6_rows(regimes: dict) -> str:
+            out = []
+            for regime, models in regimes.items():
+                out.append(
+                    f'<tr class="group"><td colspan="5">{regime}</td></tr>'
+                )
+                for model in (
+                    "direct_level", "seasonal_naive",
+                    "recursive_logdiff", "direct_logdiff",
+                ):
+                    hm = models.get(model, {})
+                    cells = "".join(
+                        f"<td>{fmt(hm.get(h, {}).get('mae'), 1)}</td>"
+                        for h in ("1", "6", "12", "18")
+                    )
+                    out.append(f"<tr><td>{model}</td>{cells}</tr>")
+            return "".join(out)
+
+        parts.append("<h3>MAE je Regime und Variante</h3>")
+        parts.append(
+            '<table><thead><tr><td>Regime / Variante</td><th>h=1</th>'
+            '<th>h=6</th><th>h=12</th><th>h=18</th></tr></thead>'
+            f"<tbody>{e6_rows(mm)}</tbody></table>"
+        )
         parts.append("""
 <div class="card finding">
-<strong>Befunde.</strong>
+<strong>Befunde je Regime.</strong>
 <ul>
-<li><strong>Direct auf Levels ist durchgehend schwach</strong> (MAE ~370
-flach &uuml;ber alle Horizonte): das Extrapolationsproblem aus E2, jetzt
-bei feiner Horizontaufl&ouml;sung. Die Fehler kommen nicht vom Horizont,
-sondern vom Level-Format.</li>
-<li><strong>Rekursiv auf Log-Diffs startet stark und verliert linear:</strong>
-MAE 11 (h=1) &rarr; 233 (h=18), Zuwachs ~12.7 pro Monat. Jede Stufe
-konditioniert auf den Unscha&#772;rfen der vorherigen Prognosen; kleine
-systematische Abweichungen in den Diffs compounding &uuml;ber 18 Stufen.
-Das ist die quantifizierte Rekursions-Strafe: <strong>~16&times; gegen&uuml;ber
-direkt bei h=18</strong>.</li>
-<li><strong>Direkt auf Log-Diffs gewinnt &uuml;berall</strong> (MAE 5.1 &rarr; 14.6,
-Dir. Acc &ge; 97&nbsp;%): die h-Schritt-Aenderung als Label bekommt die
-Rekursion umgangen - ein Modell pro Horizont springt direkt zum Ziel, und
-der Rekonstruktions-Anker (letzter beobachteter Wert) ist immer real.</li>
-<li><strong>Seasonal-Naive ist auf diesem DGP chancenlos</strong> (MAE ~995,
-Dir. Acc teils unter 0.1): 12 Monate hinter einem exponentiellen Trend
-zur&uuml;ck zu bleiben ist die teuerste m&ouml;gliche Strategie.</li>
+<li><strong>kein Trend:</strong> Alles gleichwertig (Levels 4.1 vs direkt
+Log-Diff 4.8 bei h=18). Ohne Trend kein Extrapolationsproblem - Transformation
+bring nichts, Seasonal-Naive ist hier sogar okay (4.3).</li>
+<li><strong>leichter Trend:</strong> Bei h=18 praktisch unentschieden
+(Levels 6.3 vs Log-Diff 6.8). Der Wertebereich verschiebt sich in 18 Monaten
+nur wenig - das Level-Handikap existiert noch kaum. Am kurzen Horizont ist
+direkt Log-Diff klar vorne (4.1 vs 5.7 bei h=1).</li>
+<li><strong>linearer Trend:</strong> Levels halten sich bemerkenswert gut
+(11.5 vs 11.5 bei h=18): ein additiver Trend w&auml;chst langsam relativ zum
+Wertebereich, B&auml;ume interpolieren den Gro&szlig;teil &uuml;ber die
+Year-over-Year-Lags.</li>
+<li><strong>starker Trend:</strong> Das klassische Bild in Reinform -
+Levels 305 vs direkt Log-Diff 13.2 bei h=18 (<strong>23&times;</strong>);
+rekursiv 176 (<strong>13&times; Rekursions-Strafe</strong>, fast linearer
+Zuwachs ~9.2/Monat).</li>
+<li><strong>Trendumkehr:</strong> Die Rangfolge dreht sich! Rekursiv gewinnt
+(64.6 vs 196.5 direkt Log-Diff bzw. 186.9 Levels bei h=18). Grund: Die
+h-Schritt-Labels der direkten Modelle stammen aus dem alten Wachstumsregime;
+der rekursive Rollout sieht die Kehre nach wenigen Schritten in seiner
+Historie und passt an. <em>Strukturbr&uuml;che bestrafen die eingefrorene
+Direkt-Formulierung h&auml;rter.</em></li>
 </ul>
 </div>
 <div class="card warn">
-<strong>Praxis-Konsequenz.</strong> Differenzen bilden ist die richtige Idee -
-aber als <em>direkte</em> h-Schritt-Formulierung, nicht als rekursives
-1-Schritt-Modell. Kosten: mehrere Booster statt einem (vernachl&auml;ssigbar).
-Die Kombination aus E2 + E6 ist das Rezept f&uuml;r trendende monatliche Serien:
-<code>log</code>-Transformation, h-Schritt-Log-Differenz als Label, ein
-Booster pro Horizont, Rekonstruktion aus dem beobachteten Anker.
+<strong>Praxis-Konsequenz.</strong> Auf stabilen Trends gilt: Log-Transformation,
+h-Schritt-Log-Differenz als Label, ein Booster pro Horizont (E2+E6). Nach
+Strukturbr&uuml;chen kehrt sich der Vorteil um - hier helfen kurze
+Retraining-Zyklen, adaptive rekursive Rollouts oder explizite
+Bruch-Erkennung. Die Wahl des Prognose-Setups ist also eine Frage der
+Regime-Stabilit&auml;t, nicht eine Geschmacksfrage.
 </div>""")
 
     # ------------------------------------------------------------------ takeaways
@@ -650,7 +721,8 @@ invalidiert still die Vergleichsstudie).</li>
 <tr><td>E3</td><td>Feature-Familien</td><td>DGP mit Treiber x</td><td>LGBM (6 Sets)</td></tr>
 <tr><td>E4</td><td>Kausalit&auml;t/Intervention</td><td>DGP mit OU-Treiber</td><td>LGBM (3 Varianten)</td></tr>
 <tr><td>E5</td><td>Realer Benchmark</td><td>M4, 400 Serien</td><td>LGBM, SNaive, Naive</td></tr>
-<tr><td>E6</td><td>Level vs. Log-Diff, Rekursion</td><td>1 Szenario, exponentiell</td><td>LGBM (3 Varianten), SNaive</td></tr>
+<tr><td>E6</td><td>Level vs. Log-Diff, Rekursion, Trend-Regime inkl. Umkehr</td><td>5 Regime, exponentiell/linear/Bruch</td><td>LGBM (3 Varianten), SNaive</td></tr>
+<tr><td>E7</td><td>Zeitreihen-Galerie</td><td>M4-Auswahl + je Regime 1 Serie</td><td>LGBM (3 Varianten), SNaive</td></tr>
 </tbody></table>
 <h3>Ausf&uuml;hren</h3>
 <pre><code>uv sync
@@ -660,6 +732,7 @@ uv run python studies/e3_feature_ablation.py
 uv run python studies/e4_causal.py
 uv run python studies/e5_m4.py
 uv run python studies/e6_levels_vs_logdiff.py
+uv run python studies/e7_gallery.py
 uv run python studies/build_report.py   # diesen Report neu bauen</code></pre>
 <p>Jede Studie schreibt <code>reports/results/&lt;name&gt;.json</code> und
 Abbildungen nach <code>reports/assets/</code>. Der Report embeddet beides

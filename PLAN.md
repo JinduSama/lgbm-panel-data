@@ -49,3 +49,6 @@ Jetzt: Experiments mit Metriken und Graphen in Python aufbauen.
 - [x] Metriken (MAE, RMSE, sMAPE, Directional Accuracy, MASE in E5)
 - [x] Graphen (reports/assets/, eingebettet in reports/report.html)
 - [x] Experiments (Expanding-Window-Backtest; Studien E1-E5 in studies/)
+- [x] E6: Level vs. Log-Diff ueber fuenf Trend-Regime (kein/leicht/linear/stark/Trendumkehr)
+- [x] E7: Zeitreihen-Galerie (M4-Beispiele + Regime-Beispiele) im Report
+- [x] Report: E6-Regime-Tabelle + Befunde je Regime
