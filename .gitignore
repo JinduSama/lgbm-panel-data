@@ -28,3 +28,6 @@ m4*.json
 
 # Legacy-Scratch im Paket (wird generiert, nicht genutzt)
 src/lgbm_panel/data/synthetic_panel.csv
+
+# Generierte Studien-Results (Report embeddet sie selbstenthalten)
+reports/results/
