@@ -5,7 +5,7 @@ description = "LightGBM guide and utilities for panel / time-series forecasting.
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "jfrie" }]
+authors = [{ name = "jindu" }]
 keywords = ["lightgbm", "forecasting", "timeseries", "panel", "ml"]
 dependencies = [
     "lightgbm>=4.7.0",

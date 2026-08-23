@@ -140,6 +140,8 @@ def main() -> None:
     e5 = load("e5_m4")
     e6 = load("e6_levels_vs_logdiff")
     e8 = load("e8_combined")
+    e9 = load("e9_tuning")
+    e10 = load("e10_shap_drivers")
     parts: list[str] = []
 
     # ------------------------------------------------------------------ TOC
@@ -156,6 +158,9 @@ def main() -> None:
         "<li><a href='#e5'>E5 &middot; M4-Benchmark</a></li>"
         "<li><a href='#e6'>E6 &middot; Level vs. Log-Diffs &amp; Rekursion</a></li>"
         "<li><a href='#e8'>E8 &middot; Alles zusammen</a></li>"
+        "<li><a href='#e9'>E9 &middot; Hyperparameter-Tuning</a></li>"
+        "<li><a href='#e10'>E10 &middot; Treiber-Attribution (TreeSHAP)</a></li>"
+        "<li><a href='#literatur'>Einordnung: Praxis &amp; Literatur</a></li>"
         "<li><a href='#synthese'>Gegen&uuml;berstellung</a></li>"
         "<li><a href='#takeaways'>Empfehlungen</a></li>"
         "<li><a href='#appendix'>Anhang &amp; Reproduktion</a></li>"
@@ -192,6 +197,27 @@ def main() -> None:
         if lv and lx:
             e8_drop = 1 - lx / lv
     kpis = []
+    if e9:
+        imps = {k: v["improvement_pct"] for k, v in e9["scenarios"].items()}
+        best = max(imps.values())
+        kpis.append(
+            (
+                f"&le;&nbsp;{best:.0f}&nbsp;%",
+                "Maximaler MAE-Gewinn durch Hyperparameter-Tuning &uuml;ber alle"
+                " Szenarien - Formulierung &amp; Features schlagen Tuning (E9)",
+            )
+        )
+    if e10:
+        rec = e10["recovery"]
+        h1 = next(d for d in rec["slope_decay"] if d["h"] == 1)
+        ratio = 100 * h1["slope"] / h1["ref"]
+        kpis.append(
+            (
+                f"{ratio:.0f}&nbsp;%",
+                "SHAP-Steigung vs. wahrem Treiber-Koeffizient bei h=1: das Modell"
+                " erkl&auml;rt seinen kausalen Kern selbst (E10)",
+            )
+        )
     if e2_ratio:
         kpis.append(
             (
@@ -299,7 +325,7 @@ die schwarze dicke Linie ist die eingetretene Wahrheit.</p>
         "Seasonal-Naive (orange) wiederholt das Vorjahr exakt - auf trendenden "
         "Serien bleibt sie strukturell zur&uuml;ck; das Level-LGBM (grau) folgt "
         "dem Niveau, kann aber Trendkr&uuml;mmung nicht vorwegnehmen; direkt "
-        "Log-Diff (t&uuml;rkis) extrapolieret Wachstumsraten.",
+        "Log-Diff (t&uuml;rkis) extrapoliert Wachstumsraten.",
     ))
     parts.append("""
 <div class="card finding">
@@ -747,6 +773,180 @@ Treiberstand ein starkes Signal; fuer 18 Monate dominieren Lags und Trend.</li>
 </ul>
 </div>""")
 
+    # ------------------------------------------------------------------ e9
+    if e9:
+        parts.append("""
+<h2 id="e9">E9 &middot; Hyperparameter-Tuning: der kleine Hebel</h2>
+<p>LightGBM kommt mit vern&uuml;nftigen Defaults. Wie viel gewinnt man, wenn
+Optuna (TPE, 40 Trials) die Kern-Hyperparameter <em>pro Szenario</em>
+optimiert? Zeitlich sauber getrennt: die Suche sieht nur Fold 1, bewertet
+wird auf dem sp&auml;teren Fold 2.</p>
+""")
+        rows = ""
+        label = {
+            "kein_trend": "Kein Trend + Saison",
+            "stark_trendend": "Starker Exponentialtrend",
+            "trendumkehr": "Strukturbruch im Trend",
+            "exog_treiber": "Trend + Treiber x",
+            "m4_real": "M4, 150 echte Serien",
+        }
+        for k, v in e9["scenarios"].items():
+            imp = v["improvement_pct"]
+            cls = ' class="hl"' if imp > 0 else ' class="lo"'
+            rows += (
+                f"<tr><td>{label.get(k, k)}</td>"
+                f"<td>{v['mae_holdout_default']:.2f}</td>"
+                f"<td>{v['mae_holdout_tuned']:.2f}</td>"
+                f"<td{cls}>{imp:+.1f}&nbsp;%</td></tr>"
+            )
+        parts.append(
+            "<table><thead><tr><td>Szenario</td><th>MAE Default</th>"
+            "<th>MAE Tuned</th><th>&Delta;</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table>"
+        )
+        parts.append("""
+<div class="card finding">
+<strong>Befunde.</strong>
+<ul>
+<li><strong>Tuning ist ein Nebenhebel:</strong> Der beste Gewinn &uuml;ber
+f&uuml;nf Szenarien liegt bei +5,8&nbsp;% (M4). Formulierung (E2: Faktor ~120)
+und Features (E3/E8: ~20&nbsp;%) sind Gr&ouml;&szlig;enordnungen st&auml;rker.</li>
+<li><strong>Tuning kann aktiv schaden:</strong> Beim Strukturbruch kostet das
+auf Ruhe getrimmte Setup &minus;16&nbsp;% - Hyperparameter sind Regime-Annahmen.
+Wer auf dem letzten Bruch tunet, optimiert die Vergangenheit fest.</li>
+<li><strong>Praxis-Fazit:</strong> Defaults halten, Energie in Label-
+Formulierung und Feature-Auswahl stecken - erst wenn beide stehen, lohnt
+sich Feinschliff mit sauberem Holdout.</li>
+</ul>
+</div>""")
+
+    # ------------------------------------------------------------------ e10
+    if e10:
+        s = e10["setup"]
+        b = e10["budget"]
+        rev = e10["revision"]["family_share_of_abs_revision"]
+        prof1 = e10["profiles"]["1"]
+        prof18 = e10["profiles"]["18"]
+        rec = e10["recovery"]
+        parts.append("""
+<h2 id="e10">E10 &middot; Was treibt die Prognose? TreeSHAP gegen das wahre DGP</h2>
+<div class="card">
+<p><strong>Ansatz.</strong> Importance-Zahlen (Gain, Splits) sagen nicht,
+was ein Modell <em>wirklich</em> nutzt. Deshalb hier der sch&auml;rfste Test,
+den Synthetik erlaubt: Wir kennen das DGP (60&nbsp;Serien &times;&nbsp;168&nbsp;Monate,
+kausaler AR(1)-Treiber <code>x</code> mit Serie-spezifischem
+&beta;&nbsp;&isin;&nbsp;[1.8,&nbsp;2.6], Wirkung auf den Folgemonat). Ein globales
+direktes LGBM wird auf Zielen bis Monat 114 trainiert und <em>eingefroren</em>;
+die TreeSHAP-Werte nativ via <code>pred_contrib=True</code> werden nur auf den
+ungesehenen letzten 54&nbsp;Monaten berechnet - produktionstreu und ohne
+neue Abh&auml;ngigkeit. TreeSHAP ist exakt additiv:
+Prognose = Basiswert + Summe aller Beitr&auml;ge (max. Abweichung hier
+6.5e-13).</p>
+</div>
+""")
+        parts.append(fig(
+            "e10_family_budget", "Erklaerungs-Budgets",
+            "<b>Lesehilfe:</b> Je Familie drei Balken - was mean|SHAP| als "
+            "Erkl\u00e4rung verteilt (blau), was Gain-Importance nennt (orange), "
+            "und was laut DGP tats\u00e4chlich wirkt (gr\u00fcn). Lags und Rolling "
+            "sind kausal leer, schlucken aber ~71 % des SHAP-Budgets - sie sind "
+            "die besten <i>Proxies</i>. Der wahre Treiber tr\u00e4gt 24 % des "
+            "Signals, bekommt aber nur 3.5 %.",
+        ))
+        parts.append(f"""
+<div class="card finding">
+<strong>A) Budgets.</strong> Gepoolt \u00fcber alle Horizonte: Rolling {100*b['shap'].get('Rolling-Stats', 0):.0f}&nbsp;%
++ Lags {100*b['shap'].get('Target-Lags', 0):.0f}&nbsp;% dominieren das SHAP-Budget;
+Treiber&nbsp;x erh&auml;lt {100*b['shap'].get('Treiber x', 0):.1f}&nbsp;% (Gain: {100*b['gain'].get('Treiber x', 0):.1f}&nbsp;%),
+obwohl er {100*b['truth'].get('Treiber x', 0):.0f}&nbsp;% des wahren Signals tr&auml;gt.
+<em>Predictive Budget &ne; kausales Budget</em> - quantifizierte Version der E4-Lektion.
+</div>""")
+        parts.append(fig(
+            "e10_recovery", "Koeffizienten-Recovery",
+            "<b>Lesehilfe:</b> Links die Steigung von SHAP(x) gegen x je Horizont. "
+            "Bei h=1 ist x exakt der kausale Eingang - die Steigung trifft \u03b2\u0304 "
+            "(2.10 vs 2.21). Nach rechts d\u00fcrfte sie nur wie \u03b2\u00b7\u03c6^(h-1) "
+            "(rot) zerfallen, weil das Modell x_{t+h-1} nie sehen kann. Tats\u00e4chlich "
+            "verstummt der Treiber ab h\u22484: Boosting mit Regularisierung l\u00e4sst "
+            "schwache, von Lags abgesattelte Signale fallen. Rechts: Recovery je "
+            "Serie bei h=1 - Richtung stimmt, Range komprimiert (r=0.46, MAE=0.19).",
+        ))
+        parts.append(f"""
+<div class="card finding">
+<strong>B) Recovery.</strong> Bei h=1 rekonstruiert SHAP den kausalen Koeffizienten
+(Steigung {rec['slope_decay'][0]['slope']:.2f} vs. Referenz {rec['slope_decay'][0]['ref']:.2f};
+je Serie r={rec['beta_corr_h1']:.2f}, MAE={rec['beta_mae_h1']:.2f}). Die gemessene
+Zerfallskurve f\u00e4llt aber deutlich schneller als \u03b2\u00b7\u03c6^(h-1): Das
+<em>gefittete</em> Modell nutzt den Treiber k\u00fcrzer, als es die Bayes-Optimalit\u00e4t
+erlauben w\u00fcrde - konsistent mit E8 (Gain-Anteil von x: 44&nbsp;% bei h=1,
+19&nbsp;% bei h=18).
+</div>""")
+        parts.append(fig(
+            "e10_horizon_profile", "Horizont-Profile",
+            "<b>Lesehilfe:</b> Gestapelte Familienanteile je Horizont. Kurzfristig "
+            "(h=1) tr\u00e4gt der Treiber ~16 %, langfristig (h=18) nur noch ~2 % - "
+            "dort \u00fcbernehmen Lags (47 %), Entit\u00e4ts- und Kalendermerkmale.",
+        ))
+        parts.append(f"""
+<div class="card finding">
+<strong>C) Horizont-Profile.</strong> Treiber-Anteil {100*prof1.get('Treiber x', 0):.0f}&nbsp;% bei h=1
+gegen {100*prof18.get('Treiber x', 0):.0f}&nbsp;% bei h=18. Wer Treiber-Szenarien
+rechnet, darf sie nur kurzfristig wirken lassen - oder muss Pfad-Features
+(Wert am Zieltermin) nutzen wie in E4.
+</div>""")
+        parts.append(fig(
+            "e10_revision", "Revisionen erklaeren",
+            "<b>Lesehilfe:</b> Zwei Origins (Monat 105 vs 106) erkl\u00e4ren denselben "
+            "Zielmonat; die SHAP-Differenz zerlegt die Forecast-\u00c4nderung. Rechts "
+            "ein Monat, in dem sich der Treiber stark bewegte (\u0394x = -19): fast die "
+            "ganze Revision l\u00e4uft \u00fcber Treiber- und Lag-Block. Ganz au\u00dfen "
+            "der ruhige Treiber: dort stammt die Revision aus Rolling/Lags. Additivit\u00e4t "
+            "ist exakt - die Differenz erkl\u00e4rt die Revision vollst\u00e4ndig.",
+        ))
+        parts.append(f"""
+<div class="card finding">
+<strong>D) Revisionen.</strong> Im Mittel entf\u00e4llt die gr\u00f6\u00dfte
+Revisionsmasse auf Target-Lags ({100*rev.get('Target-Lags', 0):.0f}&nbsp;%)
+und Rolling ({100*rev.get('Rolling-Stats', 0):.0f}&nbsp;%); der Treiber tr\u00e4gt
+{100*rev.get('Treiber x', 0):.0f}&nbsp;% - aber genau dann stark, wenn er sich
+bewegt. Praxis-Nutzung: Forecasts gegen\u00fcber Stakeholdern als
+SHAP-Differenz zweier Origins erkl\u00e4ren statt als Blackbox-Update.
+</div>""")
+
+    # ------------------------------------------------------------------ literatur
+    parts.append("""
+<h2 id="literatur">Einordnung: was Praxis &amp; Literatur dazu sagen</h2>
+<p>Die Befunde dieses Reports kreuzen wir mit drei Quellen-Kreisen - mit
+Ergebnis: keine Widerspr&uuml;che, mehrere direkte Best&auml;tigungen,
+zwei Inspirationen (E9, E10):</p>
+<ul>
+<li><strong>Globale Modelle gewinnen Panel-Wettbewerbe.</strong> Die
+M5-Studie (Makridakis et&nbsp;al., IJF 2022): Alle Top-L&ouml;sungen sind
+globale Modelle, LightGBM dominiert; Cross-Learning &uuml;ber Serien ist
+der Kernvorteil. Deckungsgleich mit E1 (Panel-Learning als
+Rauschfilter) und E5 (MASE&nbsp;&lt;&nbsp;1 auf echten M4-Serien).
+<a href="https://www.sciencedirect.com/science/article/pii/S0169207021001722">M5 accuracy competition (IJF)</a></li>
+<li><strong>SHAP erkl&auml;rt das Modell, nicht die Welt.</strong>
+Praxis-Darstellungen zur SHAP-Nutzung im Forecasting betonen: Zeitstruktur
+muss in die Interpretation (Lag-Bl&ouml;cke aggregieren), und der
+st&auml;rkste Anwendungsfall ist die Erkl&auml;rung von
+Forecast-<em>Revisionen</em> zwischen zwei Origins. E10 setzt beides um -
+und liefert mit dem bekannten DGP das fehlende St&uuml;ck: den
+objektiven Vergleich gegen das wahre Signal.
+<a href="https://www.analytical-software.de/en/time-series-forecasting-with-shap/">Time Series Forecasting with SHAP (HMS)</a></li>
+<li><strong>Korrelierte Features spalten Attribution.</strong> Bekannte
+Schw&auml;che von Baum-Importances: stark korrelierte Lags/Rollings teilen
+sich den Kredit, Einzelwerte werden unzuverl&auml;ssig. E10 zeigt das
+quantitativ: Die Steigung von SHAP(x) zerf&auml;llt schneller als das
+wahre Signal - Attribution geh&ouml;rt immer trianguliert gelesen
+(SHAP + Gain + Ablation + Intervention), nie einzeln.</li>
+<li><strong>Zieltransformation vor Modellglanz.</strong> Nixtlas
+mlforecast-Dokumentation macht Log-/Differenz-Transforms mit inverser
+R&uuml;cktransformation zum Standardweg - genau die E2/E6-Empfehlung.
+<a href="https://nixtlaverse.nixtla.io/mlforecast/">mlforecast docs (Nixtla)</a></li>
+</ul>
+""")
+
     # ------------------------------------------------------------------ synthese
     parts.append("""
 <h2 id="synthese">Gegen&uuml;berstellung: welche Eigenschaft erzwingt welche Entscheidung?</h2>
@@ -764,6 +964,8 @@ empirische Beleg und die Konsequenz f&uuml;r das Setup:</p>
 <tr><td>Treiber-Intervention / Szenario</td><td>E4</td><td>Nur ein Modell mit kausalem Treiber + bekanntem Pfad trackt den Eingriff</td></tr>
 <tr><td>Strukturbruch im Trend</td><td>E6-Umkehr</td><td>Direkt-Formulierung friert das alte Regime ein; Rollout/kurzes Retraining adaptiert</td></tr>
 <tr><td>Viele verwandte Serien (Panel)</td><td>E5 (M4)</td><td>Globales Lernen schl&auml;gt Naive-Baselines auch auf echten Daten robust</td></tr>
+<tr><td>Hyperparameter-Druck</td><td>E9</td><td>Defaults halten (&le;6&nbsp;% Gewinn, bis &minus;16&nbsp;% Verlust bei Br&uuml;chen); Hebel sind Formulierung &amp; Features</td></tr>
+<tr><td>&quot;Warum sagt das Modell das?&quot;</td><td>E10</td><td>TreeSHAP auf eingefrorenem Modell; Attribution gegen Wahrheit triangulieren, Revisionen als Erkl&auml;rungsformat nutzen</td></tr>
 </tbody></table>
 <div class="card finding">
 <strong>Der rote Faden.</strong> Kein Ergebnis widerspricht einem anderen -
@@ -800,7 +1002,13 @@ schnell vergessene AR(1)-Treiber nur am kurzen Horizont.</li>
 letzten beobachteten Wert; MASE-Verh&auml;ltnisse mit Vorsicht genie&szlig;en (E5).</li>
 <li><strong>Erkl&auml;rung &ne; Prognoseg&uuml;te:</strong> Importance unter
 Regime-Daten sagt nichts &uuml;ber kausale Richtigkeit. Interventionstests
-(auch simulierte) sind der H&auml;rtetest (E4).</li>
+(auch simulierte) sind der H&auml;rtetest (E4). Importance immer triangulieren:
+SHAP + Gain + Ablation + Intervention (E10: Treiber bekommt 3&nbsp;% Budget,
+tr&auml;gt aber 24&nbsp;% des wahren Signals).</li>
+<li><strong>Revisionen erkl&auml;ren, nicht verstecken:</strong> Wenn ein
+Forecast sich zwischen zwei Origins &auml;ndert, ist die SHAP-Differenz der
+zwei Erkl&auml;rungen die vollst&auml;ndige, additive Begr&uuml;ndung
+(E10 D) - das Kommunikationsformat f&uuml;r Stakeholder.</li>
 <li><strong>Hilfsspalten-Disziplin:</strong> Jede numerische Zusatzspalte in
 der Supervised-Tabelle wird zum Feature, wenn die Exogen-Auswahl nicht
 explizit gesetzt ist (E6-Debugging-Fund: <code>y_change</code> als Feature
@@ -823,6 +1031,8 @@ invalidiert still die Vergleichsstudie).</li>
 <tr><td>E6</td><td>Level vs. Log-Diff, Rekursion, Trend-Regime inkl. Umkehr</td><td>5 Regime, exponentiell/linear/Bruch</td><td>LGBM (3 Varianten), SNaive</td></tr>
 <tr><td>E7</td><td>Galerie: Verl&auml;ufe mit Prognosen</td><td>M4-Auswahl + Raster Regime &times; Saison</td><td>LGBM (3 Varianten), SNaive</td></tr>
 <tr><td>E8</td><td>Alles kombiniert: Trend + Saison + Treiber, 2&times;2 Ans&auml;tze</td><td>1 realistisches DGP (alle Eigenschaften)</td><td>LGBM (4 Zellen), SNaive</td></tr>
+<tr><td>E9</td><td>Lohnt Hyperparameter-Tuning?</td><td>5 Szenarien (E6/E8-DGPs, M4)</td><td>LGBM (Optuna, 40 Trials)</td></tr>
+<tr><td>E10</td><td>Was treibt die Prognose? Attribution vs. wahres DGP</td><td>60 Serien &times; 168 Monate, bekanntes DGP</td><td>LGBM + TreeSHAP (nativ)</td></tr>
 </tbody></table>
 <h3>Ausf&uuml;hren</h3>
 <pre><code>uv sync
@@ -834,6 +1044,8 @@ uv run python studies/e5_m4.py
 uv run python studies/e6_levels_vs_logdiff.py
 uv run python studies/e7_gallery.py
 uv run python studies/e8_combined.py
+uv run python studies/e9_tuning.py
+uv run python studies/e10_shap_drivers.py
 uv run python studies/build_report.py   # diesen Report neu bauen</code></pre>
 <p>Jede Studie schreibt <code>reports/results/&lt;name&gt;.json</code> und
 Abbildungen nach <code>reports/assets/</code>. Der Report embeddet beides
@@ -848,7 +1060,7 @@ und Abbildungen stammen aus den ausgef&uuml;hrten Experimenten dieses Repos.</fo
         f"<style>{CSS}</style></head><body><div class='wrap'>"
         "<header class='hero'><h1>LightGBM Panel-Forecasting</h1>"
         "<p class='sub'>Insight-Report: Szenarien, Datenaufbereitung, Features,"
-        " kausale Plausibilit&auml;t &amp; Rekursions-Kosten &middot; monatliche"
+        " Treiber-Attribution &amp; Tuning &middot; monatliche"
         " Serien &middot; Horizont 1-18 Monate</p></header>"
         + "".join(parts)
         + "</div></body></html>"
