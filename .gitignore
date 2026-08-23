@@ -13,9 +13,9 @@ env/
 *.pkl
 *.parquet
 *.feather
-data/
-outputs/
-results/
+/data/
+/outputs/
+/results/
 
 # OS / editor
 .DS_Store
@@ -25,3 +25,6 @@ Thumbs.db
 # Datendateien (gross / Scratch)
 monthly-train.csv
 m4*.json
+
+# Legacy-Scratch im Paket (wird generiert, nicht genutzt)
+src/lgbm_panel/data/synthetic_panel.csv
