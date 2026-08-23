@@ -34,12 +34,11 @@ Vier Fragen:
 
 from __future__ import annotations
 
+import e3_feature_ablation as e3
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from _common import save_fig, save_result
-
-import e3_feature_ablation as e3
 
 from lgbm_panel.features import FeatureConfig, build_supervised
 from lgbm_panel.strategies import DirectLGBM
@@ -49,7 +48,14 @@ N_PERIODS = 168
 HORIZONS = tuple(range(1, 19))
 TRAIN_END_IDX = 113  # letzte Zielmonats-Index im Training
 PHI = 0.7  # AR(1)-Koeffizient des Treibers
-FAMILY_ORDER = ["Target-Lags", "Rolling-Stats", "Saison-Diffs", "Kalender", "Treiber x", "Entit\u00e4t"]
+FAMILY_ORDER = [
+    "Target-Lags",
+    "Rolling-Stats",
+    "Saison-Diffs",
+    "Kalender",
+    "Treiber x",
+    "Entit\u00e4t",
+]
 FAMILY_COLORS = {
     "Target-Lags": "#2c7fb8",
     "Rolling-Stats": "#7fcdbb",
@@ -142,9 +148,11 @@ def fam_of(feature: str) -> str:
 def family_shares(sv_cols: pd.DataFrame) -> dict[str, float]:
     """mean|SHAP| je Feature -> Anteil je Familie."""
     mean_abs = sv_cols.abs().mean()
-    fam = pd.Series({f: mean_abs.get(f, 0.0) for f in mean_abs.index}).groupby(
-        [fam_of(c) for c in mean_abs.index]
-    ).sum()
+    fam = (
+        pd.Series({f: mean_abs.get(f, 0.0) for f in mean_abs.index})
+        .groupby([fam_of(c) for c in mean_abs.index])
+        .sum()
+    )
     total = fam.sum()
     return {k: float(v / total) for k, v in fam.items()}
 
@@ -154,7 +162,7 @@ def gain_shares(model: DirectLGBM) -> dict[str, float]:
     acc: dict[str, float] = {}
     for booster in model.models.values():
         gains = booster.feature_importance(importance_type="gain")
-        for name, g in zip(booster.feature_name(), gains):
+        for name, g in zip(booster.feature_name(), gains, strict=True):
             acc[fam_of(name)] = acc.get(fam_of(name), 0.0) + float(g)
     total = sum(acc.values())
     return {k: v / total for k, v in acc.items()}
@@ -183,8 +191,16 @@ def fig_budget(shares_shap: dict, shares_gain: dict, truth: dict) -> None:
     """A) Drei Budgets im Vergleich: SHAP vs Gain vs wahres DGP-Signal."""
     rows: list[tuple[str, dict[str, float | None]]] = []
     for fam in FAMILY_ORDER:
-        rows.append((fam, {"shap": shares_shap.get(fam), "gain": shares_gain.get(fam),
-                           "wahr": truth.get(fam)}))
+        rows.append(
+            (
+                fam,
+                {
+                    "shap": shares_shap.get(fam),
+                    "gain": shares_gain.get(fam),
+                    "wahr": truth.get(fam),
+                },
+            )
+        )
     for key in ("Saison (wahr)", "Trend (wahr)"):
         rows.append((key, {"shap": None, "gain": None, "wahr": truth.get(key)}))
 
@@ -195,7 +211,7 @@ def fig_budget(shares_shap: dict, shares_gain: dict, truth: dict) -> None:
     bh = 0.26
     for off, kind in ((bh, "shap"), (0.0, "gain"), (-bh, "wahr")):
         vals = [r[1][kind] for r in rows]
-        pos = [yi + off for yi, v in zip(y, vals) if v is not None]
+        pos = [yi + off for yi, v in zip(y, vals, strict=True) if v is not None]
         vv = [v for v in vals if v is not None]
         ax.barh(pos, vv, height=bh * 0.9, color=colors[kind], label=labels[kind])
     ax.set_yticks(y)
@@ -213,9 +229,16 @@ def fig_recovery(decay: list[dict], slopes: pd.Series, betas: pd.Series) -> tupl
     mae = float((slopes.reindex(betas.index) - betas).abs().mean())
     fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(13.5, 5))
     hs = [d["h"] for d in decay]
-    ax_a.plot(hs, [d["slope"] for d in decay], "o-", color="#2c7fb8", label="Gemessene SHAP-Steigung")
-    ax_a.plot(hs, [d["ref"] for d in decay], "--", color="#d1495b",
-              label=r"Referenz $\bar{\beta}\cdot\phi^{\,h-1}$ ($\phi=0{,}7$)")
+    ax_a.plot(
+        hs, [d["slope"] for d in decay], "o-", color="#2c7fb8", label="Gemessene SHAP-Steigung"
+    )
+    ax_a.plot(
+        hs,
+        [d["ref"] for d in decay],
+        "--",
+        color="#d1495b",
+        label=r"Referenz $\bar{\beta}\cdot\phi^{\,h-1}$ ($\phi=0{,}7$)",
+    )
     ax_a.set_xlabel("Horizont h (Monate)")
     ax_a.set_ylabel("Steigung von SHAP(x) gegen x")
     ax_a.set_title("Treiber-Signal zerf\u00e4llt wie die AR(1)-Pr\u00e4diktion")
@@ -226,7 +249,9 @@ def fig_recovery(decay: list[dict], slopes: pd.Series, betas: pd.Series) -> tupl
     ax_b.plot(lim, lim, "--", color="#9d9d9d", lw=1, label="Perfekte Recovery (45\u00b0)")
     ax_b.set_xlabel(r"Wahres $\beta$ (DGP)")
     ax_b.set_ylabel(r"Wiederhergestelltes $\beta$ (SHAP-Steigung, h=1)")
-    ax_b.set_title(f"h=1: SHAP rekonstruiert den kausalen Koeffizienten\n(r={corr:.2f}, MAE={mae:.2f})")
+    ax_b.set_title(
+        f"h=1: SHAP rekonstruiert den kausalen Koeffizienten\n(r={corr:.2f}, MAE={mae:.2f})"
+    )
     ax_b.legend(fontsize=9, frameon=False)
     fig.suptitle("E10 B: Rekonstruktion des wahren Treiber-Effekts", y=1.02)
     save_fig(fig, "e10_recovery")
@@ -250,8 +275,13 @@ def fig_profiles(profiles: dict[int, dict[str, float]]) -> None:
     save_fig(fig, "e10_horizon_profile")
 
 
-def revision_pass(sh: pd.DataFrame, feat_cols: list[str], c0: pd.Timestamp, c1: pd.Timestamp,
-                  last_date: pd.Timestamp) -> tuple[pd.DataFrame, dict[str, float], dict[str, float]]:
+def revision_pass(
+    sh: pd.DataFrame,
+    feat_cols: list[str],
+    c0: pd.Timestamp,
+    c1: pd.Timestamp,
+    last_date: pd.Timestamp,
+) -> tuple[pd.DataFrame, dict[str, float], dict[str, float]]:
     """D) SHAP-Differenz zweier Origins fuer gemeinsame Zielmonate."""
     taus = pd.date_range(c1 + pd.offsets.MonthBegin(1), last_date, freq="MS")
     recs = []
@@ -276,18 +306,25 @@ def revision_pass(sh: pd.DataFrame, feat_cols: list[str], c0: pd.Timestamp, c1: 
     fams = [c for c in rev.columns if not c.endswith("_absmean") and c not in ("tau", "dpred_mean")]
     abs_sum = rev[[f"{f}_absmean" for f in fams]].sum()
     share = {f: float(abs_sum[f"{f}_absmean"] / abs_sum.sum()) for f in fams}
-    signed = {f: float(rev[f].abs().sum() / rev[[f"{g}_absmean" for g in fams]].sum().sum())
-              for f in fams}
+    signed = {
+        f: float(rev[f].abs().sum() / rev[[f"{g}_absmean" for g in fams]].sum().sum()) for f in fams
+    }
     return rev, share, signed
 
 
-def _example_revision(sh: pd.DataFrame, panel: pd.DataFrame, feat_cols: list[str],
-                      c0: pd.Timestamp, c1: pd.Timestamp, series: str) -> dict:
+def _example_revision(
+    sh: pd.DataFrame,
+    panel: pd.DataFrame,
+    feat_cols: list[str],
+    c0: pd.Timestamp,
+    c1: pd.Timestamp,
+    series: str,
+) -> dict:
     """Einzelnes Serie-Beispiel: Familienbeitraege zur Revision je Zielmonat."""
     a = sh[(sh["date"] == c0) & (sh["series"] == series)].set_index(["target_date", "horizon"])
     b = sh[(sh["date"] == c1) & (sh["series"] == series)].set_index(["target_date", "horizon"])
     taus = sorted(set(a.index.get_level_values(0)) & set(b.index.get_level_values(0)))
-    best_tau, best_mag = None, -1.0
+    best_mag = -1.0
     out = {}
     for tau in taus:
         ra = a.xs(tau, level="target_date").iloc[0]
@@ -295,7 +332,7 @@ def _example_revision(sh: pd.DataFrame, panel: pd.DataFrame, feat_cols: list[str
         dsv = {c: float(rb[c] - ra[c]) for c in feat_cols}
         mag = sum(abs(v) for v in dsv.values())
         if mag > best_mag:
-            best_mag, best_tau = mag, tau
+            best_mag = mag
             fam_contrib: dict[str, float] = {}
             for c, v in dsv.items():
                 fam_contrib[fam_of(c)] = fam_contrib.get(fam_of(c), 0.0) + v
@@ -322,19 +359,23 @@ def fig_revision(share_abs: dict[str, float], move: dict, quiet: dict) -> None:
 
     fams = [f for f in FAMILY_ORDER if f in share_abs]
     vals = [share_abs[f] for f in fams]
-    ax_agg.barh(np.arange(len(fams))[::-1], vals,
-                color=[FAMILY_COLORS[f] for f in fams])
+    ax_agg.barh(np.arange(len(fams))[::-1], vals, color=[FAMILY_COLORS[f] for f in fams])
     ax_agg.set_yticks(np.arange(len(fams))[::-1])
     ax_agg.set_yticklabels(fams)
     ax_agg.set_xlabel("Anteil an |Revision|")
-    ax_agg.set_title("Wer erkl\u00e4rt Forecast-Revisionen?\n(mittel \u00fcber Serien & Zielmonate)")
+    ax_agg.set_title(
+        "Wer erkl\u00e4rt Forecast-Revisionen?\n(mittel \u00fcber Serien & Zielmonate)"
+    )
 
-    for ax, ex, title in ((ax_move, move, "Treiber bewegt sich"),
-                          (ax_quiet, quiet, "Treiber ruhig")):
+    for ax, ex, title in (
+        (ax_move, move, "Treiber bewegt sich"),
+        (ax_quiet, quiet, "Treiber ruhig"),
+    ):
         fams_ex = sorted(ex["families"], key=lambda f: abs(ex["families"][f]), reverse=True)
         vv = [ex["families"][f] for f in fams_ex]
-        ax.bar(np.arange(len(fams_ex)), vv,
-               color=[FAMILY_COLORS.get(f, "#9d9d9d") for f in fams_ex])
+        ax.bar(
+            np.arange(len(fams_ex)), vv, color=[FAMILY_COLORS.get(f, "#9d9d9d") for f in fams_ex]
+        )
         ax.axhline(0, color="#333", lw=0.8)
         ax.set_xticks(np.arange(len(fams_ex)))
         ax.set_xticklabels([f.replace(" ", "\n") for f in fams_ex], fontsize=7.5)
@@ -367,7 +408,9 @@ def run() -> dict:
     X1 = sub1[feat_cols + ["series"]].copy()
     X1["series"] = pd.Categorical(X1["series"], categories=model._categories_["series"])
     direct = model.models[1].predict(X1)
-    additivity_err = float((sh.loc[sh["horizon"] == 1, "pred_shap"].to_numpy() - direct).__abs__().max())
+    additivity_err = float(
+        (sh.loc[sh["horizon"] == 1, "pred_shap"].to_numpy() - direct).__abs__().max()
+    )
 
     # --- A) Budgets -----------------------------------------------------
     shares_shap = family_shares(sh[shap_feat_cols])
@@ -384,8 +427,9 @@ def run() -> dict:
     decay = []
     for h, grp in sh.groupby("horizon"):
         slope = float(np.polyfit(grp["x_feat"], grp["x"], 1)[0])
-        decay.append({"h": int(h), "slope": slope,
-                      "ref": float(betas.mean() * PHI ** (int(h) - 1))})
+        decay.append(
+            {"h": int(h), "slope": slope, "ref": float(betas.mean() * PHI ** (int(h) - 1))}
+        )
     corr, beta_mae = fig_recovery(decay, slopes, betas)
 
     # --- C) Horizont-Profile -------------------------------------------
@@ -394,8 +438,9 @@ def run() -> dict:
 
     # --- D) Revisionen --------------------------------------------------
     c0, c1 = panel["date"].iloc[C0_IDX], panel["date"].iloc[C1_IDX]
-    rev, share_abs, signed = revision_pass(sh, shap_feat_cols, c0, c1,
-                                           panel["date"].iloc[N_PERIODS - 1])
+    rev, share_abs, signed = revision_pass(
+        sh, shap_feat_cols, c0, c1, panel["date"].iloc[N_PERIODS - 1]
+    )
 
     dx = {s: _driver_delta(panel, s, c0, c1) for s in panel["series"].unique()}
     ser_move = max(dx, key=lambda s: abs(dx[s]))
@@ -406,16 +451,17 @@ def run() -> dict:
 
     payload = {
         "setup": {
-            "n_series": N_SERIES, "n_periods": N_PERIODS,
+            "n_series": N_SERIES,
+            "n_periods": N_PERIODS,
             "train_targets_until": str(train_end.date()),
             "holdout_months": N_PERIODS - 1 - TRAIN_END_IDX,
-            "phi": PHI, "beta_range": [1.8, 2.6],
+            "phi": PHI,
+            "beta_range": [1.8, 2.6],
             "additivity_max_err": additivity_err,
             "n_holdout_rows": int(len(sh)),
         },
         "budget": {"shap": shares_shap, "gain": shares_gain, "truth": truth},
-        "recovery": {"beta_corr_h1": corr, "beta_mae_h1": beta_mae,
-                     "slope_decay": decay},
+        "recovery": {"beta_corr_h1": corr, "beta_mae_h1": beta_mae, "slope_decay": decay},
         "profiles": {str(h): profiles[h] for h in PROFILE_HORIZONS},
         "revision": {
             "family_share_of_abs_revision": share_abs,
@@ -426,6 +472,7 @@ def run() -> dict:
     }
     save_result("e10_shap_drivers", payload)
     return payload
+
 
 if __name__ == "__main__":
     from pprint import pprint

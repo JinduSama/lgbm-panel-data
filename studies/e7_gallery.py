@@ -137,7 +137,6 @@ MODEL_STYLE = {
     "direct_level": ("Direkt Levels", "#555555", "--"),
     "seasonal_naive": ("Seasonal Naive", "#f4a261", "-."),
     "direct_logdiff": ("Direkt Log-Diff", "#00798c", ":"),
-    "direct_logdiff": ("Direkt Log-Diff", "#00798c", ":"),
 }
 
 
