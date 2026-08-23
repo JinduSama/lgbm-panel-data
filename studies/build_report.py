@@ -110,9 +110,7 @@ def metrics_table(
     horizons = sorted({h for m in metrics.values() for h in m}, key=float)
     rows = []
     for value in values:
-        rows.append(
-            f'<tr class="group"><td colspan="{len(models) + 1}">{value.upper()}</td></tr>'
-        )
+        rows.append(f'<tr class="group"><td colspan="{len(models) + 1}">{value.upper()}</td></tr>')
         for h in horizons:
             vals = [metrics[m].get(h, {}).get(value) for m in models]
             finite = [v for v in vals if v is not None]
@@ -234,11 +232,21 @@ def main() -> None:
             )
         )
     if e4_dir:
-        kpis.append((f"{100 * e4_dir:.0f} %", "Directional Accuracy nach Intervention - nur mit Treiber-Pfad (E4)"))
+        kpis.append(
+            (
+                f"{100 * e4_dir:.0f} %",
+                "Directional Accuracy nach Intervention - nur mit Treiber-Pfad (E4)",
+            )
+        )
     if e5:
         mase = e5["mase_overall"].get("lgbm")
         if mase:
-            kpis.append((f"{mase:.2f}", "MASE auf 400 echten M4-Serien (&lt;1 schl&auml;gt saisonale Naive, E5)"))
+            kpis.append(
+                (
+                    f"{mase:.2f}",
+                    "MASE auf 400 echten M4-Serien (&lt;1 schl&auml;gt saisonale Naive, E5)",
+                )
+            )
     if e8_drop:
         kpis.append(
             (
@@ -249,7 +257,10 @@ def main() -> None:
     if kpis:
         parts.append(
             '<h2 id="tldr">Kernbefunde</h2><div class="kpis">'
-            + "".join(f'<div class="kpi"><div class="v">{v}</div><div class="t">{t}</div></div>' for v, t in kpis)
+            + "".join(
+                f'<div class="kpi"><div class="v">{v}</div><div class="t">{t}</div></div>'
+                for v, t in kpis
+            )
             + "</div>"
         )
 
@@ -319,14 +330,17 @@ als diese Referenz</li>
 trainieren ausschlie&szlig;lich auf Daten vor dem gestrichelten Stichtag;
 die schwarze dicke Linie ist die eingetretene Wahrheit.</p>
 """)
-    parts.append(fig(
-        "e7_m4_examples", "M4 Beispiele",
-        "Sechs reale M4-Monatsserien, 18-Monats-Prognose. Typische Muster: "
-        "Seasonal-Naive (orange) wiederholt das Vorjahr exakt - auf trendenden "
-        "Serien bleibt sie strukturell zur&uuml;ck; das Level-LGBM (grau) folgt "
-        "dem Niveau, kann aber Trendkr&uuml;mmung nicht vorwegnehmen; direkt "
-        "Log-Diff (t&uuml;rkis) extrapoliert Wachstumsraten.",
-    ))
+    parts.append(
+        fig(
+            "e7_m4_examples",
+            "M4 Beispiele",
+            "Sechs reale M4-Monatsserien, 18-Monats-Prognose. Typische Muster: "
+            "Seasonal-Naive (orange) wiederholt das Vorjahr exakt - auf trendenden "
+            "Serien bleibt sie strukturell zur&uuml;ck; das Level-LGBM (grau) folgt "
+            "dem Niveau, kann aber Trendkr&uuml;mmung nicht vorwegnehmen; direkt "
+            "Log-Diff (t&uuml;rkis) extrapoliert Wachstumsraten.",
+        )
+    )
     parts.append("""
 <div class="card finding">
 <strong>Was man hier sieht.</strong> Die drei Prognose-Charaktere lassen sich
@@ -335,16 +349,19 @@ gegl&auml;ttete Fortschreibung, die bei Kurven zu flach wird; Log-Diff =
 Wachstumsrate-Extrapolation, die bei Trendwechseln (siehe E6/Trendumkehr)
 in die alte Richtung weiterl&auml;uft, solange nichts Neues im Training war.
 </div>""")
-    parts.append(fig(
-        "e7_regime_examples", "Regime- x Saisonalitaets-Raster",
-        "Raster aus E6-Trend-Regime (Zeilen) und Saisonstaerke (Spalten: ohne / "
-        "schwach / stark), je Zelle eine Beispielserie mit allen vier Varianten. "
-        "Ohne Saison - der Normalfall in Unternehmensdaten - bleibt "
-        "Seasonal-Naive ohne Anker (kopiert nur Rauschen); die LGBM-Varianten "
-        "unterscheiden sich vor allem &uuml;ber den Trend. In <em>trendumkehr</em> "
-        "f&auml;ngt sich nur der rekursive Rollout, weil seine Eingaben mit der "
-        "realen Abw&auml;rtsentwicklung aktualisiert werden.",
-    ))
+    parts.append(
+        fig(
+            "e7_regime_examples",
+            "Regime- x Saisonalitaets-Raster",
+            "Raster aus E6-Trend-Regime (Zeilen) und Saisonstaerke (Spalten: ohne / "
+            "schwach / stark), je Zelle eine Beispielserie mit allen vier Varianten. "
+            "Ohne Saison - der Normalfall in Unternehmensdaten - bleibt "
+            "Seasonal-Naive ohne Anker (kopiert nur Rauschen); die LGBM-Varianten "
+            "unterscheiden sich vor allem &uuml;ber den Trend. In <em>trendumkehr</em> "
+            "f&auml;ngt sich nur der rekursive Rollout, weil seine Eingaben mit der "
+            "realen Abw&auml;rtsentwicklung aktualisiert werden.",
+        )
+    )
 
     # ------------------------------------------------------------------ e1
     if e1:
@@ -354,16 +371,26 @@ in die alte Richtung weiterl&auml;uft, solange nichts Neues im Training war.
 Rauschen) gegen die Baselines Naive und Seasonal-Naive. Je Szenario ein
 eigenes Panel; identischer Backtest (3 Folds &times; 18 Monate).</p>
 """)
-        parts.append(setup_box(**{
-            "Serien": "50 je Szenario", "Länge": "132 Monate",
-            "Horizonte": "1/6/12/18", "Folds": "3", "Boosting": "300 Runden",
-        }))
-        parts.append(fig(
-            "e1_scenario_grid", "MAE je Szenario und Modell",
-            "Jedes Panel zeigt MAE &uuml;ber den Horizont f&uuml;r die drei Modelle. "
-            "Je gr&ouml;&szlig;er der Abstand der blauen (LGBM) zur orangen Linie "
-            "(Seasonal-Naive), desto gr&ouml;&szlig;er der LGBM-Vorteil.",
-        ))
+        parts.append(
+            setup_box(
+                **{
+                    "Serien": "50 je Szenario",
+                    "Länge": "132 Monate",
+                    "Horizonte": "1/6/12/18",
+                    "Folds": "3",
+                    "Boosting": "300 Runden",
+                }
+            )
+        )
+        parts.append(
+            fig(
+                "e1_scenario_grid",
+                "MAE je Szenario und Modell",
+                "Jedes Panel zeigt MAE &uuml;ber den Horizont f&uuml;r die drei Modelle. "
+                "Je gr&ouml;&szlig;er der Abstand der blauen (LGBM) zur orangen Linie "
+                "(Seasonal-Naive), desto gr&ouml;&szlig;er der LGBM-Vorteil.",
+            )
+        )
         parts.append("<h3>MAE-Ratio LGBM / Seasonal-Naive (&lt; 1 = LGBM besser)</h3>")
         parts.append(ratio_table(e1["lgbm_over_snaive_mae_ratio"]))
         parts.append("<h3>MAE im Detail (alle Szenarien)</h3>")
@@ -401,20 +428,34 @@ Setup und identische Folds. Rekonstruktion der Levels erfolgt leakage-frei
 aus beobachteten Ankern (bei Saisondifferenzen: y[t+h&minus;12], nur Horizonte
 &le; 12).</p>
 """)
-        parts.append(setup_box(**{
-            "Serien": "60", "Länge": "132 Monate", "Horizonte": "1/6/12",
-            "Folds": "3", "Wachstum": "1.5-3.5 %/Monat", "Saison": "15-35 abs.",
-        }))
-        parts.append(fig(
-            "e2_data_prep", "MAE und Richtungsguete je Transformation",
-            "Links MAE (je niedriger desto besser), rechts Directional Accuracy "
-            "(0.5 = M&uuml;nzwurf, 1.0 = perfekte Richtung). Achte auf den "
-            "Niveaunterschied zwischen <em>levels</em> und den drei "
-            "transformierten Varianten.",
-        ))
+        parts.append(
+            setup_box(
+                **{
+                    "Serien": "60",
+                    "Länge": "132 Monate",
+                    "Horizonte": "1/6/12",
+                    "Folds": "3",
+                    "Wachstum": "1.5-3.5 %/Monat",
+                    "Saison": "15-35 abs.",
+                }
+            )
+        )
+        parts.append(
+            fig(
+                "e2_data_prep",
+                "MAE und Richtungsguete je Transformation",
+                "Links MAE (je niedriger desto besser), rechts Directional Accuracy "
+                "(0.5 = M&uuml;nzwurf, 1.0 = perfekte Richtung). Achte auf den "
+                "Niveaunterschied zwischen <em>levels</em> und den drei "
+                "transformierten Varianten.",
+            )
+        )
         parts.append("<h3>Vollst&auml;ndige Metriken je Transformation</h3>")
-        parts.append(metrics_table(s, values=("mae", "rmse", "dir_acc"), digits=2,
-                                   lower_is_better={"dir_acc": False}))
+        parts.append(
+            metrics_table(
+                s, values=("mae", "rmse", "dir_acc"), digits=2, lower_is_better={"dir_acc": False}
+            )
+        )
         parts.append("""
 <div class="card finding">
 <strong>Befunde.</strong>
@@ -445,16 +486,26 @@ teilweise erhalten.</li>
 Verz&ouml;gerung): y = level + &beta;&middot;x<sub>t&#8202;&minus;&#8202;1</sub> + Saison +
 Trend + Rauschen. Sechs Feature-Sets, identische Folds und Boosting.</p>
 """)
-        parts.append(setup_box(**{
-            "Serien": "60", "Länge": "132 Monate", "Horizonte": "1/6/12/18",
-            "Folds": "3", "Treiber": "AR(1), φ=0.7, β∈[1.8,2.6]",
-        }))
-        parts.append(fig(
-            "e3_feature_ablation", "Feature-Ablation MAE und Importance",
-            "Links: MAE-Kurven der sechs Feature-Sets - je tiefer, desto besser; "
-            "die Reihenfolge der Farben folgt der Ablationskette. Rechts: "
-            "Gain-Anteile je Feature-Familie des vollst&auml;ndigen Modells bei h=12.",
-        ))
+        parts.append(
+            setup_box(
+                **{
+                    "Serien": "60",
+                    "Länge": "132 Monate",
+                    "Horizonte": "1/6/12/18",
+                    "Folds": "3",
+                    "Treiber": "AR(1), φ=0.7, β∈[1.8,2.6]",
+                }
+            )
+        )
+        parts.append(
+            fig(
+                "e3_feature_ablation",
+                "Feature-Ablation MAE und Importance",
+                "Links: MAE-Kurven der sechs Feature-Sets - je tiefer, desto besser; "
+                "die Reihenfolge der Farben folgt der Ablationskette. Rechts: "
+                "Gain-Anteile je Feature-Familie des vollst&auml;ndigen Modells bei h=12.",
+            )
+        )
         parts.append("<h3>MAE je Feature-Set</h3>")
         parts.append(metrics_table(e3["metrics"], values=("mae", "rmse"), digits=2))
         sh = e3["importance_share_h12"]
@@ -506,18 +557,29 @@ Szenario-Feature (Wert bei Ziel&minus;1 Monat) - realistisch, weil
 Budgetpl&auml;ne zum Forecast-Zeitpunkt bekannt sind</li>
 </ul>
 """)
-        parts.append(setup_box(**{
-            "Serien": "40", "Länge": "150 Monate", "Intervention": "Monat 132, x → 35 %",
-            "Origin": "T=132", "Fenster": "18 Monate", "Boosting": "300 Runden",
-        }))
-        parts.append(fig(
-            "e4_causal_intervention", "Interventionsexperiment",
-            "Links (Beispielserie S00): schwarze Linie = Wahrheit nach "
-            "Budget-Senkung, grau gestrichelt = Welt ohne Senkung. Die rote "
-            "Prognose (lag_only) bleibt oben im alten Regime, t&uuml;rkis "
-            "(with_x_plan) folgt dem Einbruch. Mitte: MAE je Horizont im "
-            "Interventionsfenster. Rechts: Gain-Anteile beider Modelle.",
-        ))
+        parts.append(
+            setup_box(
+                **{
+                    "Serien": "40",
+                    "Länge": "150 Monate",
+                    "Intervention": "Monat 132, x → 35 %",
+                    "Origin": "T=132",
+                    "Fenster": "18 Monate",
+                    "Boosting": "300 Runden",
+                }
+            )
+        )
+        parts.append(
+            fig(
+                "e4_causal_intervention",
+                "Interventionsexperiment",
+                "Links (Beispielserie S00): schwarze Linie = Wahrheit nach "
+                "Budget-Senkung, grau gestrichelt = Welt ohne Senkung. Die rote "
+                "Prognose (lag_only) bleibt oben im alten Regime, t&uuml;rkis "
+                "(with_x_plan) folgt dem Einbruch. Mitte: MAE je Horizont im "
+                "Interventionsfenster. Rechts: Gain-Anteile beider Modelle.",
+            )
+        )
         parts.append("<h3>Regime-Vergleich vor der Intervention (honest Backtest)</h3>")
         parts.append(metrics_table(e4["regime_backtest"], values=("mae",), digits=2))
         parts.append("<h3>Prognosen im Interventionsfenster (18 Monate ab Stichtag)</h3>")
@@ -563,21 +625,30 @@ spricht, nicht ob es kausal richtig liegt.</li>
     if e5:
         parts.append(f"""
 <h2 id="e5">E5 &middot; Realer Benchmark: M4-Monatsdaten</h2>
-<p>{e5['n_series']} zuf&auml;llig gezogene M4-Monatsserien (Wettbewerb: Monats-
+<p>{e5["n_series"]} zuf&auml;llig gezogene M4-Monatsserien (Wettbewerb: Monats-
 daten, Horizont 18), 2 Folds &times; 18 Monate Testfenster, identische Pipeline
 wie die synthetischen Studien.</p>
 """)
-        parts.append(setup_box(**{
-            "Serien": str(e5["n_series"]), "Folds": "2 × 18 Monate",
-            "Horizonte": "1/6/12/18", "Boosting": "400 Runden",
-        }))
-        parts.append(fig(
-            "e5_m4_benchmark", "M4 Benchmark",
-            "Links MAE, Mitte sMAPE (beide je Horizont), rechts MASE als "
-            "Gesamtkennzahl. Auf echten Daten sind die Niveaus gro&szlig; und "
-            "serienheterogen - die <em>Relativordnung</em> der Modelle ist die "
-            "Aussage, nicht der absolute Wert.",
-        ))
+        parts.append(
+            setup_box(
+                **{
+                    "Serien": str(e5["n_series"]),
+                    "Folds": "2 × 18 Monate",
+                    "Horizonte": "1/6/12/18",
+                    "Boosting": "400 Runden",
+                }
+            )
+        )
+        parts.append(
+            fig(
+                "e5_m4_benchmark",
+                "M4 Benchmark",
+                "Links MAE, Mitte sMAPE (beide je Horizont), rechts MASE als "
+                "Gesamtkennzahl. Auf echten Daten sind die Niveaus gro&szlig; und "
+                "serienheterogen - die <em>Relativordnung</em> der Modelle ist die "
+                "Aussage, nicht der absolute Wert.",
+            )
+        )
         parts.append("<h3>Metriken je Horizont</h3>")
         parts.append(metrics_table(e5["metrics"], values=("mae", "smape"), digits=2))
         mo = e5["mase_overall"]
@@ -598,8 +669,7 @@ wie die synthetischen Studien.</p>
         imp = e5.get("importance_lgbm_h18_top10") or {}
         if imp:
             imp_rows = "".join(
-                f"<tr><td>{k}</td><td>{fmt(100 * v, 1)}&nbsp;%</td></tr>"
-                for k, v in imp.items()
+                f"<tr><td>{k}</td><td>{fmt(100 * v, 1)}&nbsp;%</td></tr>" for k, v in imp.items()
             )
             parts.append(
                 "<h3>LGBM-Gain-Anteile bei h=18 (Top 10)</h3>"
@@ -648,27 +718,36 @@ Horizonte 1-18 in Monatsaufl&ouml;sung):</p>
 keine Rekursion), <strong>recursive_logdiff</strong> (ein 1-Schritt-Modell,
 Rollout mit eigenen Prognosen als Lags), <strong>seasonal_naive</strong>.</p>
 """)
-        parts.append(setup_box(**{
-            "Serien": "60 je Regime", "Länge": "144 Monate",
-            "Folds": "3 × 18 Monate", "Boosting": "300 Runden",
-            "Level-Bereich": "80-400 (log-sicher)",
-        }))
-        parts.append(fig(
-            "e6_levels_vs_logdiff", "Level vs Log-Diff ueber Regime",
-            "Ein Panel je Regime, MAE auf Levels, logarithmische Y-Achse. "
-            "Beobachte, wie sich die Ordnung der Kurven zwischen "
-            "<em>stark_trendend</em> und <em>trendumkehr</em> umkehrt.",
-        ))
+        parts.append(
+            setup_box(
+                **{
+                    "Serien": "60 je Regime",
+                    "Länge": "144 Monate",
+                    "Folds": "3 × 18 Monate",
+                    "Boosting": "300 Runden",
+                    "Level-Bereich": "80-400 (log-sicher)",
+                }
+            )
+        )
+        parts.append(
+            fig(
+                "e6_levels_vs_logdiff",
+                "Level vs Log-Diff ueber Regime",
+                "Ein Panel je Regime, MAE auf Levels, logarithmische Y-Achse. "
+                "Beobachte, wie sich die Ordnung der Kurven zwischen "
+                "<em>stark_trendend</em> und <em>trendumkehr</em> umkehrt.",
+            )
+        )
 
         def e6_rows(regimes: dict) -> str:
             out = []
             for regime, models in regimes.items():
-                out.append(
-                    f'<tr class="group"><td colspan="5">{regime}</td></tr>'
-                )
+                out.append(f'<tr class="group"><td colspan="5">{regime}</td></tr>')
                 for model in (
-                    "direct_level", "seasonal_naive",
-                    "recursive_logdiff", "direct_logdiff",
+                    "direct_level",
+                    "seasonal_naive",
+                    "recursive_logdiff",
+                    "direct_logdiff",
                 ):
                     hm = models.get(model, {})
                     cells = "".join(
@@ -680,8 +759,8 @@ Rollout mit eigenen Prognosen als Lags), <strong>seasonal_naive</strong>.</p>
 
         parts.append("<h3>MAE je Regime und Variante</h3>")
         parts.append(
-            '<table><thead><tr><td>Regime / Variante</td><th>h=1</th>'
-            '<th>h=6</th><th>h=12</th><th>h=18</th></tr></thead>'
+            "<table><thead><tr><td>Regime / Variante</td><th>h=1</th>"
+            "<th>h=6</th><th>h=12</th><th>h=18</th></tr></thead>"
             f"<tbody>{e6_rows(mm)}</tbody></table>"
         )
         parts.append("""
@@ -738,22 +817,36 @@ ohne/mit <code>x</code></li>
 <li><strong>seasonal_naive</strong> als Referenz</li>
 </ul>
 """)
-        parts.append(setup_box(**{
-            "Serien": "60", "Länge": "144 Monate",
-            "Horizonte": "1/3/6/12/18", "Folds": "3 × 18 Monate",
-            "Trend": "+0.4-0.9 %/Monat", "Saison": "Amplitude 8-18",
-            "Treiber x": "AR(1), φ=0.9, β∈[1.5,2.5]", "Boosting": "300 Runden",
-        }))
-        parts.append(fig(
-            "e8_combined", "Alles kombiniert",
-            "Links MAE auf Levels (log-Skala): Levels starten schon bei h=1 hoch "
-            "(das Niveau-Problem), Log-Diffs fixen das, und der Treiber addiert "
-            "auf beiden Formulierungen Schub. Rechts der Gain-Anteil von x: am "
-            "kurzen Ende ~44&nbsp;%, am langen Ende ~19&nbsp;%.",
-        ))
+        parts.append(
+            setup_box(
+                **{
+                    "Serien": "60",
+                    "Länge": "144 Monate",
+                    "Horizonte": "1/3/6/12/18",
+                    "Folds": "3 × 18 Monate",
+                    "Trend": "+0.4-0.9 %/Monat",
+                    "Saison": "Amplitude 8-18",
+                    "Treiber x": "AR(1), φ=0.9, β∈[1.5,2.5]",
+                    "Boosting": "300 Runden",
+                }
+            )
+        )
+        parts.append(
+            fig(
+                "e8_combined",
+                "Alles kombiniert",
+                "Links MAE auf Levels (log-Skala): Levels starten schon bei h=1 hoch "
+                "(das Niveau-Problem), Log-Diffs fixen das, und der Treiber addiert "
+                "auf beiden Formulierungen Schub. Rechts der Gain-Anteil von x: am "
+                "kurzen Ende ~44&nbsp;%, am langen Ende ~19&nbsp;%.",
+            )
+        )
         parts.append("<h3>Metriken je Variante (alle Horizonte)</h3>")
-        parts.append(metrics_table(mm8, values=("mae", "dir_acc"), digits=2,
-                                   lower_is_better={"dir_acc": False}))
+        parts.append(
+            metrics_table(
+                mm8, values=("mae", "dir_acc"), digits=2, lower_is_better={"dir_acc": False}
+            )
+        )
         parts.append("""
 <div class="card finding">
 <strong>Befunde.</strong>
@@ -844,71 +937,83 @@ Prognose = Basiswert + Summe aller Beitr&auml;ge (max. Abweichung hier
 6.5e-13).</p>
 </div>
 """)
-        parts.append(fig(
-            "e10_family_budget", "Erklaerungs-Budgets",
-            "<b>Lesehilfe:</b> Je Familie drei Balken - was mean|SHAP| als "
-            "Erkl\u00e4rung verteilt (blau), was Gain-Importance nennt (orange), "
-            "und was laut DGP tats\u00e4chlich wirkt (gr\u00fcn). Lags und Rolling "
-            "sind kausal leer, schlucken aber ~71 % des SHAP-Budgets - sie sind "
-            "die besten <i>Proxies</i>. Der wahre Treiber tr\u00e4gt 24 % des "
-            "Signals, bekommt aber nur 3.5 %.",
-        ))
+        parts.append(
+            fig(
+                "e10_family_budget",
+                "Erklaerungs-Budgets",
+                "<b>Lesehilfe:</b> Je Familie drei Balken - was mean|SHAP| als "
+                "Erkl\u00e4rung verteilt (blau), was Gain-Importance nennt (orange), "
+                "und was laut DGP tats\u00e4chlich wirkt (gr\u00fcn). Lags und Rolling "
+                "sind kausal leer, schlucken aber ~71 % des SHAP-Budgets - sie sind "
+                "die besten <i>Proxies</i>. Der wahre Treiber tr\u00e4gt 24 % des "
+                "Signals, bekommt aber nur 3.5 %.",
+            )
+        )
         parts.append(f"""
 <div class="card finding">
-<strong>A) Budgets.</strong> Gepoolt \u00fcber alle Horizonte: Rolling {100*b['shap'].get('Rolling-Stats', 0):.0f}&nbsp;%
-+ Lags {100*b['shap'].get('Target-Lags', 0):.0f}&nbsp;% dominieren das SHAP-Budget;
-Treiber&nbsp;x erh&auml;lt {100*b['shap'].get('Treiber x', 0):.1f}&nbsp;% (Gain: {100*b['gain'].get('Treiber x', 0):.1f}&nbsp;%),
-obwohl er {100*b['truth'].get('Treiber x', 0):.0f}&nbsp;% des wahren Signals tr&auml;gt.
+<strong>A) Budgets.</strong> Gepoolt \u00fcber alle Horizonte: Rolling {100 * b["shap"].get("Rolling-Stats", 0):.0f}&nbsp;%
++ Lags {100 * b["shap"].get("Target-Lags", 0):.0f}&nbsp;% dominieren das SHAP-Budget;
+Treiber&nbsp;x erh&auml;lt {100 * b["shap"].get("Treiber x", 0):.1f}&nbsp;% (Gain: {100 * b["gain"].get("Treiber x", 0):.1f}&nbsp;%),
+obwohl er {100 * b["truth"].get("Treiber x", 0):.0f}&nbsp;% des wahren Signals tr&auml;gt.
 <em>Predictive Budget &ne; kausales Budget</em> - quantifizierte Version der E4-Lektion.
 </div>""")
-        parts.append(fig(
-            "e10_recovery", "Koeffizienten-Recovery",
-            "<b>Lesehilfe:</b> Links die Steigung von SHAP(x) gegen x je Horizont. "
-            "Bei h=1 ist x exakt der kausale Eingang - die Steigung trifft \u03b2\u0304 "
-            "(2.10 vs 2.21). Nach rechts d\u00fcrfte sie nur wie \u03b2\u00b7\u03c6^(h-1) "
-            "(rot) zerfallen, weil das Modell x_{t+h-1} nie sehen kann. Tats\u00e4chlich "
-            "verstummt der Treiber ab h\u22484: Boosting mit Regularisierung l\u00e4sst "
-            "schwache, von Lags abgesattelte Signale fallen. Rechts: Recovery je "
-            "Serie bei h=1 - Richtung stimmt, Range komprimiert (r=0.46, MAE=0.19).",
-        ))
+        parts.append(
+            fig(
+                "e10_recovery",
+                "Koeffizienten-Recovery",
+                "<b>Lesehilfe:</b> Links die Steigung von SHAP(x) gegen x je Horizont. "
+                "Bei h=1 ist x exakt der kausale Eingang - die Steigung trifft \u03b2\u0304 "
+                "(2.10 vs 2.21). Nach rechts d\u00fcrfte sie nur wie \u03b2\u00b7\u03c6^(h-1) "
+                "(rot) zerfallen, weil das Modell x_{t+h-1} nie sehen kann. Tats\u00e4chlich "
+                "verstummt der Treiber ab h\u22484: Boosting mit Regularisierung l\u00e4sst "
+                "schwache, von Lags abgesattelte Signale fallen. Rechts: Recovery je "
+                "Serie bei h=1 - Richtung stimmt, Range komprimiert (r=0.46, MAE=0.19).",
+            )
+        )
         parts.append(f"""
 <div class="card finding">
 <strong>B) Recovery.</strong> Bei h=1 rekonstruiert SHAP den kausalen Koeffizienten
-(Steigung {rec['slope_decay'][0]['slope']:.2f} vs. Referenz {rec['slope_decay'][0]['ref']:.2f};
-je Serie r={rec['beta_corr_h1']:.2f}, MAE={rec['beta_mae_h1']:.2f}). Die gemessene
+(Steigung {rec["slope_decay"][0]["slope"]:.2f} vs. Referenz {rec["slope_decay"][0]["ref"]:.2f};
+je Serie r={rec["beta_corr_h1"]:.2f}, MAE={rec["beta_mae_h1"]:.2f}). Die gemessene
 Zerfallskurve f\u00e4llt aber deutlich schneller als \u03b2\u00b7\u03c6^(h-1): Das
 <em>gefittete</em> Modell nutzt den Treiber k\u00fcrzer, als es die Bayes-Optimalit\u00e4t
 erlauben w\u00fcrde - konsistent mit E8 (Gain-Anteil von x: 44&nbsp;% bei h=1,
 19&nbsp;% bei h=18).
 </div>""")
-        parts.append(fig(
-            "e10_horizon_profile", "Horizont-Profile",
-            "<b>Lesehilfe:</b> Gestapelte Familienanteile je Horizont. Kurzfristig "
-            "(h=1) tr\u00e4gt der Treiber ~16 %, langfristig (h=18) nur noch ~2 % - "
-            "dort \u00fcbernehmen Lags (47 %), Entit\u00e4ts- und Kalendermerkmale.",
-        ))
+        parts.append(
+            fig(
+                "e10_horizon_profile",
+                "Horizont-Profile",
+                "<b>Lesehilfe:</b> Gestapelte Familienanteile je Horizont. Kurzfristig "
+                "(h=1) tr\u00e4gt der Treiber ~16 %, langfristig (h=18) nur noch ~2 % - "
+                "dort \u00fcbernehmen Lags (47 %), Entit\u00e4ts- und Kalendermerkmale.",
+            )
+        )
         parts.append(f"""
 <div class="card finding">
-<strong>C) Horizont-Profile.</strong> Treiber-Anteil {100*prof1.get('Treiber x', 0):.0f}&nbsp;% bei h=1
-gegen {100*prof18.get('Treiber x', 0):.0f}&nbsp;% bei h=18. Wer Treiber-Szenarien
+<strong>C) Horizont-Profile.</strong> Treiber-Anteil {100 * prof1.get("Treiber x", 0):.0f}&nbsp;% bei h=1
+gegen {100 * prof18.get("Treiber x", 0):.0f}&nbsp;% bei h=18. Wer Treiber-Szenarien
 rechnet, darf sie nur kurzfristig wirken lassen - oder muss Pfad-Features
 (Wert am Zieltermin) nutzen wie in E4.
 </div>""")
-        parts.append(fig(
-            "e10_revision", "Revisionen erklaeren",
-            "<b>Lesehilfe:</b> Zwei Origins (Monat 105 vs 106) erkl\u00e4ren denselben "
-            "Zielmonat; die SHAP-Differenz zerlegt die Forecast-\u00c4nderung. Rechts "
-            "ein Monat, in dem sich der Treiber stark bewegte (\u0394x = -19): fast die "
-            "ganze Revision l\u00e4uft \u00fcber Treiber- und Lag-Block. Ganz au\u00dfen "
-            "der ruhige Treiber: dort stammt die Revision aus Rolling/Lags. Additivit\u00e4t "
-            "ist exakt - die Differenz erkl\u00e4rt die Revision vollst\u00e4ndig.",
-        ))
+        parts.append(
+            fig(
+                "e10_revision",
+                "Revisionen erklaeren",
+                "<b>Lesehilfe:</b> Zwei Origins (Monat 105 vs 106) erkl\u00e4ren denselben "
+                "Zielmonat; die SHAP-Differenz zerlegt die Forecast-\u00c4nderung. Rechts "
+                "ein Monat, in dem sich der Treiber stark bewegte (\u0394x = -19): fast die "
+                "ganze Revision l\u00e4uft \u00fcber Treiber- und Lag-Block. Ganz au\u00dfen "
+                "der ruhige Treiber: dort stammt die Revision aus Rolling/Lags. Additivit\u00e4t "
+                "ist exakt - die Differenz erkl\u00e4rt die Revision vollst\u00e4ndig.",
+            )
+        )
         parts.append(f"""
 <div class="card finding">
 <strong>D) Revisionen.</strong> Im Mittel entf\u00e4llt die gr\u00f6\u00dfte
-Revisionsmasse auf Target-Lags ({100*rev.get('Target-Lags', 0):.0f}&nbsp;%)
-und Rolling ({100*rev.get('Rolling-Stats', 0):.0f}&nbsp;%); der Treiber tr\u00e4gt
-{100*rev.get('Treiber x', 0):.0f}&nbsp;% - aber genau dann stark, wenn er sich
+Revisionsmasse auf Target-Lags ({100 * rev.get("Target-Lags", 0):.0f}&nbsp;%)
+und Rolling ({100 * rev.get("Rolling-Stats", 0):.0f}&nbsp;%); der Treiber tr\u00e4gt
+{100 * rev.get("Treiber x", 0):.0f}&nbsp;% - aber genau dann stark, wenn er sich
 bewegt. Praxis-Nutzung: Forecasts gegen\u00fcber Stakeholdern als
 SHAP-Differenz zweier Origins erkl\u00e4ren statt als Blackbox-Update.
 </div>""")

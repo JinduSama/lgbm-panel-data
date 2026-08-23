@@ -1,4 +1,5 @@
 """Temporaerer Probe: sind alle vier Varianten-Prognosen belegt und plausibel?"""
+
 import e6_levels_vs_logdiff as e6
 import e7_gallery as g
 import pandas as pd
@@ -12,5 +13,7 @@ print("series:", s, "| truth tail:", truth[-3:].round(1))
 for m, df in preds.items():
     pp = df[df["series"] == s].sort_values("target_date")
     vals = pp["level_pred"].to_numpy()
-    print(f"{m:18s} n={len(pp):3d} nan={pd.isna(vals).sum():3d} "
-          f"first={vals[:3].round(1)} last={vals[-3:].round(1)}")
+    print(
+        f"{m:18s} n={len(pp):3d} nan={pd.isna(vals).sum():3d} "
+        f"first={vals[:3].round(1)} last={vals[-3:].round(1)}"
+    )

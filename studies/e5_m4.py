@@ -41,7 +41,10 @@ def run() -> dict:
     df = load_dataset("m4", n_series=N_SERIES)
 
     res = expanding_backtest(
-        df, horizons=HORIZONS, n_folds=2, step_months=max(HORIZONS),
+        df,
+        horizons=HORIZONS,
+        n_folds=2,
+        step_months=max(HORIZONS),
         collect_importance=True,
     )
     m = res.metrics_by_horizon
@@ -56,8 +59,7 @@ def run() -> dict:
         if not np.isfinite(s) or s <= 0:
             continue
         err = np.mean(np.abs(grp["y"] - grp["pred"]))
-        rows.append({"model": model, "series": series, "mae": float(err),
-                     "mase": float(err / s)})
+        rows.append({"model": model, "series": series, "mae": float(err), "mase": float(err / s)})
     per_series = pd.DataFrame(rows)
     mase_overall = per_series.groupby("model")["mase"].mean()
 
@@ -66,21 +68,33 @@ def run() -> dict:
     piv = m.pivot(index="horizon", columns="model", values="mae").sort_index()
     for model in MODELS:
         if model in piv:
-            axes[0].plot(piv.index, piv[model], marker="o", color=MODEL_COLORS[model],
-                         label=MODEL_LABELS[model])
+            axes[0].plot(
+                piv.index,
+                piv[model],
+                marker="o",
+                color=MODEL_COLORS[model],
+                label=MODEL_LABELS[model],
+            )
     axes[0].set_title("MAE nach Horizont")
 
     smape_piv = m.pivot(index="horizon", columns="model", values="smape").sort_index()
     for model in MODELS:
         if model in smape_piv:
-            axes[1].plot(smape_piv.index, smape_piv[model], marker="o",
-                         color=MODEL_COLORS[model], label=MODEL_LABELS[model])
+            axes[1].plot(
+                smape_piv.index,
+                smape_piv[model],
+                marker="o",
+                color=MODEL_COLORS[model],
+                label=MODEL_LABELS[model],
+            )
     axes[1].set_title("sMAPE (%) nach Horizont")
 
     order = mase_overall.sort_values().index
-    axes[2].bar([MODEL_LABELS.get(mo, mo) for mo in order],
-                [mase_overall[mo] for mo in order],
-                color=[MODEL_COLORS.get(mo, "#777777") for mo in order])
+    axes[2].bar(
+        [MODEL_LABELS.get(mo, mo) for mo in order],
+        [mase_overall[mo] for mo in order],
+        color=[MODEL_COLORS.get(mo, "#777777") for mo in order],
+    )
     axes[2].axhline(1.0, color="#d1495b", ls="--", lw=1, label="Seasonal-Naive-Niveau")
     axes[2].set_title("MASE (niedriger = besser)")
     axes[2].tick_params(axis="x", labelsize=7)
@@ -96,7 +110,8 @@ def run() -> dict:
     if res.importance is not None:
         imp_lgbm = (
             res.importance[res.importance["model"] == "lgbm"]
-            .groupby(["feature", "horizon"], as_index=False)["gain"].mean()
+            .groupby(["feature", "horizon"], as_index=False)["gain"]
+            .mean()
         )
         h18 = imp_lgbm[imp_lgbm["horizon"] == 18].copy()
         h18["share"] = h18["gain"] / h18["gain"].sum()

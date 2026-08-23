@@ -66,8 +66,9 @@ def metrics_dict(metrics: pd.DataFrame) -> dict:
     for model, grp in metrics.groupby("model"):
         out[model] = {
             str(int(h)): row
-            for h, row in grp.set_index("horizon")
-            [["mae", "rmse", "smape", "dir_acc"]].to_dict("index").items()
+            for h, row in grp.set_index("horizon")[["mae", "rmse", "smape", "dir_acc"]]
+            .to_dict("index")
+            .items()
         }
     return out
 

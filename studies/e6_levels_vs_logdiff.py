@@ -134,8 +134,7 @@ def _panel(
 def _fold_ends(grid: pd.DatetimeIndex, step: int) -> list[pd.Timestamp]:
     """Identische Fold-Grenzen wie expanding_backtest."""
     return [
-        grid[-1] - pd.DateOffset(months=(N_FOLDS - k + 1) * step)
-        for k in range(1, N_FOLDS + 1)
+        grid[-1] - pd.DateOffset(months=(N_FOLDS - k + 1) * step) for k in range(1, N_FOLDS + 1)
     ]
 
 
@@ -168,8 +167,9 @@ def _run_regime(raw: pd.DataFrame) -> dict[str, dict]:
     summary: dict[str, dict] = {
         m: {
             str(int(h)): row
-            for h, row in grp.set_index("horizon")
-            [["mae", "rmse", "smape", "dir_acc"]].to_dict("index").items()
+            for h, row in grp.set_index("horizon")[["mae", "rmse", "smape", "dir_acc"]]
+            .to_dict("index")
+            .items()
         }
         for m, grp in engine.metrics_by_horizon.groupby("model")
     }
@@ -233,15 +233,17 @@ def _run_regime(raw: pd.DataFrame) -> dict[str, dict]:
                 hist.append(v_end + sum(changes))
                 cur = cur + pd.DateOffset(months=1)
                 tgt = targets[h - 1]
-                recursive_rows.append({
-                    "series": s,
-                    "target_date": tgt,
-                    "horizon": h,
-                    "level_pred": float(np.exp(v_end + sum(changes[:h]))),
-                    "truth": float(level_lookup[(s, tgt)]),
-                    "L0": float(np.exp(v_end)),
-                    "fold": i,
-                })
+                recursive_rows.append(
+                    {
+                        "series": s,
+                        "target_date": tgt,
+                        "horizon": h,
+                        "level_pred": float(np.exp(v_end + sum(changes[:h]))),
+                        "truth": float(level_lookup[(s, tgt)]),
+                        "L0": float(np.exp(v_end)),
+                        "fold": i,
+                    }
+                )
     summary.update(_evaluate(pd.DataFrame(recursive_rows), "recursive_logdiff"))
     return summary
 
@@ -254,10 +256,7 @@ def _evaluate(preds: pd.DataFrame, name: str) -> dict[str, dict]:
             "mae": float(np.mean(np.abs(ok["truth"] - ok["level_pred"]))),
             "rmse": float(np.sqrt(np.mean((ok["truth"] - ok["level_pred"]) ** 2))),
             "dir_acc": float(
-                np.mean(
-                    np.sign(ok["level_pred"] - ok["L0"])
-                    == np.sign(ok["truth"] - ok["L0"])
-                )
+                np.mean(np.sign(ok["level_pred"] - ok["L0"]) == np.sign(ok["truth"] - ok["L0"]))
             ),
         }
     return out
@@ -288,20 +287,25 @@ def run() -> dict:
 
         ax = axes[idx]
         for model in [
-            "direct_level", "seasonal_naive",
-            "recursive_logdiff", "direct_logdiff",
+            "direct_level",
+            "seasonal_naive",
+            "recursive_logdiff",
+            "direct_logdiff",
         ]:
             pts = sorted((int(h), m["mae"]) for h, m in summary[model].items())
             ax.plot(
-                [p[0] for p in pts], [p[1] for p in pts],
-                marker="o", color=colors[model], label=labels[model],
+                [p[0] for p in pts],
+                [p[1] for p in pts],
+                marker="o",
+                color=colors[model],
+                label=labels[model],
             )
         ax.set_yscale("log")
         ax.set_title(name, fontsize=11)
         ax.grid(alpha=0.3, which="both")
         ax.set_xlabel("Horizont (Monate)", fontsize=9)
 
-    for ax in axes[len(REGIMES):]:
+    for ax in axes[len(REGIMES) :]:
         ax.axis("off")
     handles, lab = axes[0].get_legend_handles_labels()
     fig.legend(handles, lab, loc="lower center", ncol=4, frameon=False, fontsize=9)

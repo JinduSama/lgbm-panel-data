@@ -82,8 +82,13 @@ WITH_X = FeatureConfig(exog_cols=("x",))
 WITH_X_PLAN = FeatureConfig(exog_cols=("x",), exog_scenario_lags=(1,))
 
 
-def _forecast_from_origin(model: DirectLGBM, df: pd.DataFrame, cfg: FeatureConfig,
-                          origin: pd.Timestamp, plan_path: pd.DataFrame | None) -> pd.DataFrame:
+def _forecast_from_origin(
+    model: DirectLGBM,
+    df: pd.DataFrame,
+    cfg: FeatureConfig,
+    origin: pd.Timestamp,
+    plan_path: pd.DataFrame | None,
+) -> pd.DataFrame:
     """
     Zeilen am Cutoff=origin je Serie und Horizont bauen und prognostizieren.
 
@@ -94,9 +99,7 @@ def _forecast_from_origin(model: DirectLGBM, df: pd.DataFrame, cfg: FeatureConfi
     last = df["date"].max()
     pad_months = max(HORIZONS)
     pad_dates = pd.date_range(last + pd.DateOffset(months=1), periods=pad_months, freq="MS")
-    last_vals = (
-        df.sort_values("date").groupby("series").tail(1).set_index("series")[["value", "x"]]
-    )
+    last_vals = df.sort_values("date").groupby("series").tail(1).set_index("series")[["value", "x"]]
     pads = []
     for s, row in last_vals.iterrows():
         p = pd.DataFrame({"date": pad_dates})
@@ -144,16 +147,12 @@ def run() -> dict:
         ("with_x_plan", WITH_X_PLAN),
     ):
         train = build_supervised(train_raw, horizons=HORIZONS, config=cfg)
-        models[name] = DirectLGBM(horizons=HORIZONS).fit(
-            train, config=cfg, num_boost_round=300
-        )
+        models[name] = DirectLGBM(horizons=HORIZONS).fit(train, config=cfg, num_boost_round=300)
 
     # --- 3) Prognosen ab Origin unter der Intervention ---------------------
     origin = train_end
     preds = {
-        "lag_only": _forecast_from_origin(
-            models["lag_only"], train_raw, LAG_ONLY, origin, None
-        ),
+        "lag_only": _forecast_from_origin(models["lag_only"], train_raw, LAG_ONLY, origin, None),
         "with_x": _forecast_from_origin(models["with_x"], train_raw, WITH_X, origin, None),
         "with_x_plan": _forecast_from_origin(
             models["with_x_plan"], train_raw, WITH_X_PLAN, origin, cf
@@ -169,15 +168,19 @@ def run() -> dict:
             pd.MultiIndex.from_arrays([p["series"], p["target_date"]])
         ).to_numpy()
         p = p.dropna(subset=["truth"])
-        ref = train_raw.set_index(["series", "date"])["value"].reindex(
-            pd.MultiIndex.from_arrays([p["series"], p["date"]])
-        ).to_numpy()
-        eval_rows.append({
-            "model": name,
-            "mae": float(np.mean(np.abs(p["truth"] - p["pred"]))),
-            "bias": float(np.mean(p["pred"] - p["truth"])),
-            "dir_acc": float(np.mean(np.sign(p["pred"] - ref) == np.sign(p["truth"] - ref))),
-        })
+        ref = (
+            train_raw.set_index(["series", "date"])["value"]
+            .reindex(pd.MultiIndex.from_arrays([p["series"], p["date"]]))
+            .to_numpy()
+        )
+        eval_rows.append(
+            {
+                "model": name,
+                "mae": float(np.mean(np.abs(p["truth"] - p["pred"]))),
+                "bias": float(np.mean(p["pred"] - p["truth"])),
+                "dir_acc": float(np.mean(np.sign(p["pred"] - ref) == np.sign(p["truth"] - ref))),
+            }
+        )
     intervention = pd.DataFrame(eval_rows)
 
     # --- Importance-Kontrast ------------------------------------------------
@@ -189,11 +192,17 @@ def run() -> dict:
         gains = booster.feature_importance("gain")
         fam = {}
         for n_, g_ in zip(names, gains, strict=True):
-            key = ("Target-Lags" if n_.startswith(("lag_", "diff_"))
-                   else "Rolling" if n_.startswith("roll")
-                   else "Kalender" if n_ in ("month", "quarter", "year")
-                   else "Treiber x" if n_.startswith("x")
-                   else n_)
+            key = (
+                "Target-Lags"
+                if n_.startswith(("lag_", "diff_"))
+                else "Rolling"
+                if n_.startswith("roll")
+                else "Kalender"
+                if n_ in ("month", "quarter", "year")
+                else "Treiber x"
+                if n_.startswith("x")
+                else n_
+            )
             fam[key] = fam.get(key, 0.0) + float(g_)
         total = sum(fam.values())
         return {k: round(v / total, 4) for k, v in sorted(fam.items(), key=lambda kv: -kv[1])}
@@ -209,10 +218,21 @@ def run() -> dict:
     hist_cf = cf[(cf["series"] == one) & (cf["date"] > origin)].sort_values("date")
     hist_fact_future = fact[(fact["series"] == one) & (fact["date"] > origin)].sort_values("date")
     ax.plot(hist["date"], hist["value"], color="#333333", lw=1, label="Historie (faktisch)")
-    ax.plot(hist_fact_future["date"], hist_fact_future["value"], color="#999999", ls="--",
-            lw=1, label="ohne Intervention (faktisch)")
-    ax.plot(hist_cf["date"], hist_cf["value"], color="black", lw=2,
-            label="nach Budget-Senkung (Wahrheit)")
+    ax.plot(
+        hist_fact_future["date"],
+        hist_fact_future["value"],
+        color="#999999",
+        ls="--",
+        lw=1,
+        label="ohne Intervention (faktisch)",
+    )
+    ax.plot(
+        hist_cf["date"],
+        hist_cf["value"],
+        color="black",
+        lw=2,
+        label="nach Budget-Senkung (Wahrheit)",
+    )
     colors = {"lag_only": "#d1495b", "with_x": "#edae49", "with_x_plan": "#00798c"}
     for name, p in preds.items():
         pp = p[p["series"] == one].sort_values("target_date")
@@ -229,8 +249,12 @@ def run() -> dict:
         merged["truth"] = truth_lookup.reindex(
             pd.MultiIndex.from_arrays([merged["series"], merged["target_date"]])
         ).to_numpy()
-        mae_h = merged.dropna(subset=["truth"]).groupby("horizon").apply(
-            lambda g_: float(np.mean(np.abs(g_["truth"] - g_["pred"]))), include_groups=False
+        mae_h = (
+            merged.dropna(subset=["truth"])
+            .groupby("horizon")
+            .apply(
+                lambda g_: float(np.mean(np.abs(g_["truth"] - g_["pred"]))), include_groups=False
+            )
         )
         ax.plot(mae_h.index, mae_h.values, marker="o", color=colors[name], label=name)
     ax.set_title("MAE nach Horizont (Interventionsfenster)")
@@ -241,10 +265,20 @@ def run() -> dict:
     ax = axes[2]
     width = 0.38
     keys = sorted(set(shares_lag) | set(shares_x))
-    ax.barh([k + " (lag)" for k in keys], [shares_lag.get(k, 0) for k in keys],
-            height=width, color="#d1495b", label="lag_only")
-    ax.barh([k + " (x)" for k in keys], [shares_x.get(k, 0) for k in keys],
-            height=width, color="#00798c", label="with_x_plan")
+    ax.barh(
+        [k + " (lag)" for k in keys],
+        [shares_lag.get(k, 0) for k in keys],
+        height=width,
+        color="#d1495b",
+        label="lag_only",
+    )
+    ax.barh(
+        [k + " (x)" for k in keys],
+        [shares_x.get(k, 0) for k in keys],
+        height=width,
+        color="#00798c",
+        label="with_x_plan",
+    )
     ax.set_title("Gain-Anteile (h=12)")
     ax.legend(fontsize=8)
     ax.grid(alpha=0.3)

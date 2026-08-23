@@ -81,16 +81,13 @@ def make_world(seed: int = SEED) -> pd.DataFrame:
 
         season = amp * np.sin(2 * np.pi * t / 12.0 + phase)
         y = level0 * np.exp(growth * t) + beta * np.roll(x, 1) + season + eps
-        frames.append(
-            pd.DataFrame({"series": f"S{s:03d}", "date": dates, "value": y, "x": x})
-        )
+        frames.append(pd.DataFrame({"series": f"S{s:03d}", "date": dates, "value": y, "x": x}))
     return pd.concat(frames, ignore_index=True)
 
 
 def _fold_ends(grid: pd.DatetimeIndex) -> list[pd.Timestamp]:
     return [
-        grid[-1] - pd.DateOffset(months=(N_FOLDS - k + 1) * max(HZ))
-        for k in range(1, N_FOLDS + 1)
+        grid[-1] - pd.DateOffset(months=(N_FOLDS - k + 1) * max(HZ)) for k in range(1, N_FOLDS + 1)
     ]
 
 
@@ -103,10 +100,7 @@ def _evaluate(preds: pd.DataFrame, name: str) -> dict[str, dict]:
             "mae": float(np.mean(np.abs(err))),
             "rmse": float(np.sqrt(np.mean(err**2))),
             "dir_acc": float(
-                np.mean(
-                    np.sign(ok["level_pred"] - ok["L0"])
-                    == np.sign(ok["truth"] - ok["L0"])
-                )
+                np.mean(np.sign(ok["level_pred"] - ok["L0"]) == np.sign(ok["truth"] - ok["L0"]))
             ),
         }
     return out
@@ -149,8 +143,9 @@ def run() -> dict:
         {
             m: {
                 str(int(h)): row
-                for h, row in grp.set_index("horizon")
-                [["mae", "rmse", "smape", "dir_acc"]].to_dict("index").items()
+                for h, row in grp.set_index("horizon")[["mae", "rmse", "smape", "dir_acc"]]
+                .to_dict("index")
+                .items()
             }
             for m, grp in engine.metrics_by_horizon.groupby("model")
         }
@@ -198,8 +193,16 @@ def run() -> dict:
     for model, (label, color, ls, lw) in style.items():
         hm = summary.get(model, {})
         hs = sorted(int(h) for h in hm)
-        ax_mae.plot(hs, [hm[str(h)]["mae"] for h in hs], color=color, ls=ls, lw=lw,
-                    marker="o", ms=3.5, label=label)
+        ax_mae.plot(
+            hs,
+            [hm[str(h)]["mae"] for h in hs],
+            color=color,
+            ls=ls,
+            lw=lw,
+            marker="o",
+            ms=3.5,
+            label=label,
+        )
     ax_mae.set_yscale("log")
     ax_mae.set_xticks(list(HZ))
     ax_mae.set_xlabel("Horizont (Monate)")
@@ -212,8 +215,9 @@ def run() -> dict:
     xs = np.arange(len(HZ))
     for off, (tag, color) in enumerate((("levels_x", "#2c7fb8"), ("logdiff_x", "#6a4c93"))):
         vals = [importance.get(tag, {}).get(str(h), 0.0) for h in HZ]
-        ax_gain.bar(xs + (off - 0.5) * width, vals, width=width, color=color,
-                    label=f"{style[tag][0]}")
+        ax_gain.bar(
+            xs + (off - 0.5) * width, vals, width=width, color=color, label=f"{style[tag][0]}"
+        )
     ax_gain.set_xticks(xs)
     ax_gain.set_xticklabels([str(h) for h in HZ])
     ax_gain.set_ylim(0, 1)

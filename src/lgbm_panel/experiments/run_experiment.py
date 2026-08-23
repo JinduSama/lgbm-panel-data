@@ -73,8 +73,6 @@ def _config_key(cfg: FeatureConfig) -> tuple:
     )
 
 
-
-
 def _panel_lookup(df: pd.DataFrame) -> pd.Series:
     """(series, date) -> value Lookup."""
     return df.set_index(["series", "date"])["value"]
@@ -104,9 +102,7 @@ def _baseline_predictions(
     elif kind == "snaive":
         lookup = _panel_lookup(hist)
         shifted = out["target_date"] - pd.DateOffset(months=12)
-        out["pred"] = lookup.reindex(
-            pd.MultiIndex.from_arrays([out["series"], shifted])
-        ).to_numpy()
+        out["pred"] = lookup.reindex(pd.MultiIndex.from_arrays([out["series"], shifted])).to_numpy()
     else:
         raise ValueError(f"Unbekannte Baseline: {kind!r}")
     return out
@@ -159,9 +155,7 @@ def expanding_backtest(
             continue
         key = _config_key(spec.config or FeatureConfig())
         if key not in sup_cache:
-            sup_cache[key] = build_supervised(
-                df, horizons=horizons, config=spec.config
-            ).merge(
+            sup_cache[key] = build_supervised(df, horizons=horizons, config=spec.config).merge(
                 df[["series", "date", "value"]].rename(columns={"value": "y_ref"}),
                 on=["series", "date"],
                 how="left",
@@ -170,8 +164,7 @@ def expanding_backtest(
     grid = pd.DatetimeIndex(sorted(df["date"].unique()))
     # Letzter Fold testet genau die letzten ``step`` Monate des Panels.
     ends = [
-        grid[-1] - pd.DateOffset(months=(n_folds - k + 1) * step)
-        for k in range(1, n_folds + 1)
+        grid[-1] - pd.DateOffset(months=(n_folds - k + 1) * step) for k in range(1, n_folds + 1)
     ]
 
     pred_frames: list[pd.DataFrame] = []
@@ -226,8 +219,15 @@ def expanding_backtest(
 
             out = out.rename(columns={"date": "cutoff"}).assign(model=spec.name, fold=i)
             cols = [
-                "model", "fold", "series", "cutoff", "target_date",
-                "horizon", "y_ref", "y", "pred",
+                "model",
+                "fold",
+                "series",
+                "cutoff",
+                "target_date",
+                "horizon",
+                "y_ref",
+                "y",
+                "pred",
             ]
             out = out[[c for c in cols if c in out.columns]]
             pred_frames.append(out)
@@ -237,8 +237,7 @@ def expanding_backtest(
                 fold_rows.append({"model": spec.name, "fold": i, "horizon": int(h), **m})
             if verbose:
                 print(
-                    f"fold {i}/{len(ends)} end={fold_end.date()} "
-                    f"spec={spec.name} rows={len(out)}"
+                    f"fold {i}/{len(ends)} end={fold_end.date()} spec={spec.name} rows={len(out)}"
                 )
 
     predictions = pd.concat(pred_frames, ignore_index=True) if pred_frames else pd.DataFrame()

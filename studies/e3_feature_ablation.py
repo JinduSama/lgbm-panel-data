@@ -55,9 +55,7 @@ def make_driven_panel(n_series: int = 60, n_periods: int = 132, seed: int = 5) -
         y = level + beta * np.roll(x, 1) + season + trend + noise
         y[0] = level + season[0] + noise[0]
 
-        frames.append(
-            pd.DataFrame({"series": f"S{s:03d}", "date": dates, "value": y, "x": x})
-        )
+        frames.append(pd.DataFrame({"series": f"S{s:03d}", "date": dates, "value": y, "x": x}))
     return pd.concat(frames, ignore_index=True)
 
 
@@ -77,15 +75,21 @@ def specs() -> list[ModelSpec]:
         ModelSpec(
             "lags_rolling",
             config=FeatureConfig(
-                lags=BASE_LAGS, rolling_windows=(3, 6, 12),
-            diff_lags=(), time_features=(), exog_cols=(),
+                lags=BASE_LAGS,
+                rolling_windows=(3, 6, 12),
+                diff_lags=(),
+                time_features=(),
+                exog_cols=(),
             ),
         ),
         ModelSpec(
             "lags_time",
             config=FeatureConfig(
-                lags=BASE_LAGS, rolling_windows=(), diff_lags=(),
-            time_features=("month",), exog_cols=(),
+                lags=BASE_LAGS,
+                rolling_windows=(),
+                diff_lags=(),
+                time_features=("month",),
+                exog_cols=(),
             ),
         ),
         ModelSpec(
@@ -120,19 +124,21 @@ def run() -> dict:
     df = make_driven_panel()
 
     # Metrik-Vergleich aller Feature-Sets.
-    res = expanding_backtest(df, horizons=HORIZONS, specs=specs(), n_folds=3,
-                             step_months=max(HORIZONS))
+    res = expanding_backtest(
+        df, horizons=HORIZONS, specs=specs(), n_folds=3, step_months=max(HORIZONS)
+    )
     m = res.metrics_by_horizon
 
     # Importance des exogenen Modells (Fold-Mittel, horizontweise).
     res_imp = expanding_backtest(
-        df, horizons=(12,), specs=[specs()[-1]], n_folds=3,
-        step_months=max(HORIZONS), collect_importance=True,
+        df,
+        horizons=(12,),
+        specs=[specs()[-1]],
+        n_folds=3,
+        step_months=max(HORIZONS),
+        collect_importance=True,
     )
-    imp = (
-        res_imp.importance.groupby(["feature", "horizon"], as_index=False)["gain"]
-        .mean()
-    )
+    imp = res_imp.importance.groupby(["feature", "horizon"], as_index=False)["gain"].mean()
     imp["family"] = imp["feature"].map(family_of)
     fam = imp.groupby(["family", "horizon"], as_index=False)["gain"].sum()
     total = fam.groupby("horizon")["gain"].transform("sum")
@@ -146,8 +152,9 @@ def run() -> dict:
     for j, model in enumerate(order):
         if model not in piv:
             continue
-        axes[0].plot(piv.index, piv[model], marker="o",
-                     color=cmap(j / (len(order) - 1)), label=model)
+        axes[0].plot(
+            piv.index, piv[model], marker="o", color=cmap(j / (len(order) - 1)), label=model
+        )
     axes[0].set_title("MAE nach Horizont")
     axes[0].set_xlabel("Horizont (Monate)")
     axes[0].legend(frameon=False, fontsize=8)
@@ -164,9 +171,7 @@ def run() -> dict:
     save_fig(fig, "e3_feature_ablation")
     payload = {
         "metrics": metrics_dict(m),
-        "importance_share_h12": dict(
-            zip(h12["family"], h12["share"].round(4), strict=True)
-        ),
+        "importance_share_h12": dict(zip(h12["family"], h12["share"].round(4), strict=True)),
     }
     save_result("e3_feature_ablation", payload)
     return payload

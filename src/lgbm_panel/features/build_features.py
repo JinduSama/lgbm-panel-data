@@ -95,9 +95,7 @@ def build_supervised(
         exog_cols = [
             c
             for c in cfg.exog_cols
-            if c in df.columns
-            and c not in generated
-            and pd.api.types.is_numeric_dtype(df[c])
+            if c in df.columns and c not in generated and pd.api.types.is_numeric_dtype(df[c])
         ]
     else:
         exog_cols = [
@@ -151,7 +149,6 @@ def build_supervised(
         part["target_date"] = df[f"target_date_h{h}"]
         frames.append(part)
 
-
     out = pd.concat(frames, ignore_index=True)
     # --- Szenario-Exogena: x bei (target_date - j) je Zeile -------------
     if cfg.exog_scenario_lags and exog_cols:
@@ -159,9 +156,11 @@ def build_supervised(
         for col in exog_cols:
             for j in cfg.exog_scenario_lags:
                 key_date = out["target_date"] - pd.DateOffset(months=int(j))
-                out[f"{col}_at_tminus{j}"] = lookup_x[col].reindex(
-                    pd.MultiIndex.from_arrays([out["series"], key_date])
-                ).to_numpy()
+                out[f"{col}_at_tminus{j}"] = (
+                    lookup_x[col]
+                    .reindex(pd.MultiIndex.from_arrays([out["series"], key_date]))
+                    .to_numpy()
+                )
     return out.dropna(subset=["y"]).reset_index(drop=True)
 
 

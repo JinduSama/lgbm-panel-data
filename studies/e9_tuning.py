@@ -68,17 +68,19 @@ def _scenario_data(name: str) -> tuple[pd.DataFrame, FeatureConfig]:
         "stark_trendend": e6.REGIMES["stark_trendend"],
         "trendumkehr": e6.REGIMES["trendumkehr"],
     }[name]
-    return e6._panel(regime, seed={  # type: ignore[arg-type]
-        "kein_trend": 61, "stark_trendend": 62, "trendumkehr": 63,
-    }[name]), make_cfg(False)
+    return e6._panel(
+        regime,
+        seed={  # type: ignore[arg-type]
+            "kein_trend": 61,
+            "stark_trendend": 62,
+            "trendumkehr": 63,
+        }[name],
+    ), make_cfg(False)
 
 
 def _fold_ends(grid: pd.DatetimeIndex) -> list[pd.Timestamp]:
     """Zwei Folds a 18 Monate: [-36,-18] zum Suchen, [-18,0] zum Bewerten."""
-    return [
-        grid[-1] - pd.DateOffset(months=(3 - k) * max(HZ))
-        for k in range(1, 3)
-    ]
+    return [grid[-1] - pd.DateOffset(months=(3 - k) * max(HZ)) for k in range(1, 3)]
 
 
 def _prepare(raw: pd.DataFrame, cfg: FeatureConfig) -> pd.DataFrame:
@@ -86,8 +88,9 @@ def _prepare(raw: pd.DataFrame, cfg: FeatureConfig) -> pd.DataFrame:
     return sup.dropna(subset=["y"])
 
 
-def _block_mae(sup: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp,
-               cfg: FeatureConfig, params: dict) -> float:
+def _block_mae(
+    sup: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp, cfg: FeatureConfig, params: dict
+) -> float:
     """Gepoolte MAE (alle Horizonte) fuer einen Test-Block ab einem Fit bis `start`."""
     train = sup[sup["target_date"] <= start]
     test = sup[(sup["target_date"] > start) & (sup["target_date"] <= end)]
@@ -119,9 +122,7 @@ def tune_scenario(name: str) -> dict:
         }
         return _block_mae(sup, fe_search, hi_search, cfg, params)
 
-    study = optuna.create_study(
-        direction="minimize", sampler=optuna.samplers.TPESampler(seed=SEED)
-    )
+    study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=SEED))
     study.optimize(objective, n_trials=N_TRIALS, show_progress_bar=False)
 
     best = {k: v for k, v in study.best_params.items()}
@@ -161,9 +162,12 @@ def run() -> dict:
     for i, s in enumerate(SCENARIOS):
         imp = results[s]["improvement_pct"]
         ax_pooled.text(
-            xs[i], max(defaults[i], tuned[i]),
+            xs[i],
+            max(defaults[i], tuned[i]),
             f"{'-' if imp >= 0 else '+'}{abs(imp):.0f}%",
-            ha="center", va="bottom", fontsize=9,
+            ha="center",
+            va="bottom",
+            fontsize=9,
             color="#1b4943" if imp >= 0 else "#b23a48",
         )
     ax_pooled.set_xticks(xs)

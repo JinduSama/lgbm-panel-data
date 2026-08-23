@@ -56,7 +56,10 @@ def run() -> dict:
     for i, (name, kw) in enumerate(SCENARIOS.items()):
         df = make_panel(n_series=50, n_periods=132, horizon=max(HORIZONS), seed=7 + i, **kw)
         res = expanding_backtest(
-            df, horizons=HORIZONS, n_folds=3, step_months=max(HORIZONS),
+            df,
+            horizons=HORIZONS,
+            n_folds=3,
+            step_months=max(HORIZONS),
         )
         m = res.metrics_by_horizon
         piv = metrics_pivot(m)
@@ -65,7 +68,10 @@ def run() -> dict:
         for model in MODELS:
             if model in piv.columns:
                 ax.plot(
-                    piv.index, piv[model], marker="o", color=MODEL_COLORS[model],
+                    piv.index,
+                    piv[model],
+                    marker="o",
+                    color=MODEL_COLORS[model],
                     label=MODEL_LABELS[model],
                 )
         ax.set_title(name, fontsize=10)
@@ -78,7 +84,7 @@ def run() -> dict:
     fig.legend(handles, labels, loc="lower center", ncol=3, frameon=False)
     fig.suptitle("E1: MAE nach Horizont - Szenario-Raster", fontsize=13)
     fig.tight_layout(rect=(0, 0.06, 1, 0.97))
-    for ax in axes[len(SCENARIOS):]:
+    for ax in axes[len(SCENARIOS) :]:
         ax.axis("off")
     save_fig(fig, "e1_scenario_grid")
 

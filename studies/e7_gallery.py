@@ -55,8 +55,9 @@ def _rows_at_origin(sup: pd.DataFrame, origin: pd.Timestamp) -> pd.DataFrame:
     return rows
 
 
-def variant_forecasts(raw: pd.DataFrame, origin: pd.Timestamp,
-                      series_ids: list[str]) -> dict[str, pd.DataFrame]:
+def variant_forecasts(
+    raw: pd.DataFrame, origin: pd.Timestamp, series_ids: list[str]
+) -> dict[str, pd.DataFrame]:
     """model -> DataFrame(series, target_date, pred) fuer H Monate ab Origin."""
     out: dict[str, pd.DataFrame] = {}
     targets = pd.date_range(origin + pd.DateOffset(months=1), periods=H, freq="MS")
@@ -79,7 +80,8 @@ def variant_forecasts(raw: pd.DataFrame, origin: pd.Timestamp,
     supl = build_supervised(log_padded, horizons=ALL_H, config=e6.DIRECT_CFG)
     supl = supl.merge(
         log_df[["series", "date", "value"]].rename(columns={"value": "y_ref"}),
-        on=["series", "date"], how="left",
+        on=["series", "date"],
+        how="left",
     )
     rows_l = _rows_at_origin(supl[supl["series"].isin(series_ids)], origin)
     tr = supl[supl["target_date"] <= origin].dropna(subset=["y_ref"])
@@ -92,10 +94,15 @@ def variant_forecasts(raw: pd.DataFrame, origin: pd.Timestamp,
     out["direct_logdiff"] = pl[["series", "target_date", "level_pred"]]
 
     # --- rekursiv auf Log-Diffs ----------------------------------------------
-    sup1 = build_supervised(log_df, horizons=(1,), config=e6.RCFG).merge(
-        log_df[["series", "date", "value"]].rename(columns={"value": "y_ref"}),
-        on=["series", "date"], how="left",
-    ).dropna(subset=["y_ref"])
+    sup1 = (
+        build_supervised(log_df, horizons=(1,), config=e6.RCFG)
+        .merge(
+            log_df[["series", "date", "value"]].rename(columns={"value": "y_ref"}),
+            on=["series", "date"],
+            how="left",
+        )
+        .dropna(subset=["y_ref"])
+    )
     rec = DirectLGBM(horizons=(1,), categorical=()).fit(
         sup1.assign(y=sup1["y"] - sup1["y_ref"]), config=e6.RCFG, num_boost_round=300
     )
@@ -113,10 +120,13 @@ def variant_forecasts(raw: pd.DataFrame, origin: pd.Timestamp,
             changes.append(d)
             hist.append(v_end + sum(changes))
             cur = cur + pd.DateOffset(months=1)
-            rec_rows.append({
-                "series": s, "target_date": targets[h - 1],
-                "level_pred": float(np.exp(v_end + sum(changes[:h]))),
-            })
+            rec_rows.append(
+                {
+                    "series": s,
+                    "target_date": targets[h - 1],
+                    "level_pred": float(np.exp(v_end + sum(changes[:h]))),
+                }
+            )
         del hist  # noqa - Lesbarkeit: hist wird pro Serie neu aufgebaut
     out["recursive_logdiff"] = pd.DataFrame(rec_rows)
 
@@ -140,23 +150,38 @@ MODEL_STYLE = {
 }
 
 
-def _plot_series(ax, raw: pd.DataFrame, s: str, origin: pd.Timestamp,
-                 preds: dict[str, pd.DataFrame], title: str, show_legend: bool,
-                 hist_months: int | None = None):
+def _plot_series(
+    ax,
+    raw: pd.DataFrame,
+    s: str,
+    origin: pd.Timestamp,
+    preds: dict[str, pd.DataFrame],
+    title: str,
+    show_legend: bool,
+    hist_months: int | None = None,
+):
     """Eine Serie mit Historie, Wahrheit und allen Varianten-Prognosen."""
     hist_all = raw[(raw["series"] == s) & (raw["date"] <= origin)].sort_values("date")
     hist = hist_all.tail(hist_months) if hist_months else hist_all
     future = raw[(raw["series"] == s) & (raw["date"] > origin)].sort_values("date")
     ax.plot(hist["date"], hist["value"], color="#111111", lw=1.1, label="Historie")
-    ax.plot(future["date"], future["value"], color="#111111", lw=2.6, alpha=0.85,
-            label="Wahrheit", zorder=3)
+    ax.plot(
+        future["date"],
+        future["value"],
+        color="#111111",
+        lw=2.6,
+        alpha=0.85,
+        label="Wahrheit",
+        zorder=3,
+    )
     for model, (label, color, ls) in MODEL_STYLE.items():
         p = preds.get(model)
         if p is None or p.empty:
             continue
         pp = p[p["series"] == s].sort_values("target_date")
-        ax.plot(pp["target_date"], pp["level_pred"], color=color, ls=ls, lw=2.0,
-                label=label, zorder=4)
+        ax.plot(
+            pp["target_date"], pp["level_pred"], color=color, ls=ls, lw=2.0, label=label, zorder=4
+        )
     ax.axvline(origin, color="#888888", ls=":", lw=0.9)
     ax.set_title(title, fontsize=10)
     ax.grid(alpha=0.25)
@@ -175,8 +200,9 @@ def run() -> None:
 
     fig, axes = plt.subplots(2, 3, figsize=(15, 7))
     for ax, s in zip(axes.ravel(), picks, strict=True):
-        _plot_series(ax, m4, s, origin, preds_m4, f"M4 {s}",
-                     show_legend=(s == picks[0]), hist_months=120)
+        _plot_series(
+            ax, m4, s, origin, preds_m4, f"M4 {s}", show_legend=(s == picks[0]), hist_months=120
+        )
     handles, lab = axes[0][0].get_legend_handles_labels()
     fig.legend(handles, lab, loc="lower center", ncol=6, frameon=False, fontsize=9)
     fig.suptitle(
@@ -190,21 +216,28 @@ def run() -> None:
     season_levels = {"ohne": (0.0, 0.0), "schwach": (4.0, 8.0), "stark": (15.0, 35.0)}
     regimes = list({**e6.REGIMES, "stationaer": {"kind": "stationary"}}.items())
     regimes = list(e6.REGIMES.items())
-    fig, axes = plt.subplots(
-        len(regimes), len(season_levels), figsize=(16, 3.0 * len(regimes))
-    )
+    fig, axes = plt.subplots(len(regimes), len(season_levels), figsize=(16, 3.0 * len(regimes)))
     for r, (name, regime) in enumerate(regimes):
         for c, (sname, amp) in enumerate(season_levels.items()):
             raw = e6._panel(
-                regime, seed=40 + c, season_amp=amp, n_series=10,
-                rel_noise=0.03, spike_prob=0.05,  # Realismus: keine sauberen Funktionen
+                regime,
+                seed=40 + c,
+                season_amp=amp,
+                n_series=10,
+                rel_noise=0.03,
+                spike_prob=0.05,  # Realismus: keine sauberen Funktionen
             )
             s = sorted(raw["series"].unique())[0]
             origin = raw["date"].max() - pd.DateOffset(months=H)
             preds = variant_forecasts(raw, origin, [s])
             _plot_series(
-                axes[r][c], raw, s, origin, preds,
-                f"{name} | Saison {sname}", show_legend=False,
+                axes[r][c],
+                raw,
+                s,
+                origin,
+                preds,
+                f"{name} | Saison {sname}",
+                show_legend=False,
             )
     handles, lab = axes[0][0].get_legend_handles_labels()
     fig.legend(handles, lab, loc="lower center", ncol=5, frameon=False, fontsize=10)

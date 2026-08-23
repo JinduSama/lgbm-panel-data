@@ -46,9 +46,7 @@ def _metrics(ok: pd.DataFrame) -> dict[str, float]:
         "mae": float(np.mean(np.abs(ok["y"] - ok["pred"]))),
         "rmse": float(np.sqrt(np.mean((ok["y"] - ok["pred"]) ** 2))),
         "dir_acc": float(
-            np.mean(
-                np.sign(ok["pred"] - ok["y_ref"]) == np.sign(ok["y"] - ok["y_ref"])
-            )
+            np.mean(np.sign(ok["pred"] - ok["y_ref"]) == np.sign(ok["y"] - ok["y_ref"]))
         ),
     }
 
@@ -93,9 +91,7 @@ def run() -> dict:
         d["value"] = g.transform(lambda s, f=f: f(s).diff(12))
         d = d.dropna(subset=["value"])
         p = backtest(d)
-        key = pd.MultiIndex.from_arrays(
-            [p["series"], p["target_date"] - pd.DateOffset(months=12)]
-        )
+        key = pd.MultiIndex.from_arrays([p["series"], p["target_date"] - pd.DateOffset(months=12)])
         base = lookup.reindex(key).to_numpy()  # y[t+h-12], beobachtet fuer h<=12
         lvl_origin = lookup.reindex(
             pd.MultiIndex.from_arrays([p["series"], p["cutoff"]])
@@ -115,10 +111,16 @@ def run() -> dict:
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.2))
     for name in frames:
         hs = sorted(summary[name], key=int)
-        axes[0].plot(hs, [summary[name][h]["mae"] for h in hs],
-                     marker="o", color=COLORS[name], label=name)
-        axes[1].plot(hs, [summary[name][h]["dir_acc"] for h in hs],
-                     marker="o", color=COLORS[name], label=name)
+        axes[0].plot(
+            hs, [summary[name][h]["mae"] for h in hs], marker="o", color=COLORS[name], label=name
+        )
+        axes[1].plot(
+            hs,
+            [summary[name][h]["dir_acc"] for h in hs],
+            marker="o",
+            color=COLORS[name],
+            label=name,
+        )
     axes[0].set_title("MAE nach Horizont")
     axes[1].set_title("Directional Accuracy")
     for ax in axes:

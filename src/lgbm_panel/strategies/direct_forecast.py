@@ -65,9 +65,7 @@ class DirectLGBM:
         params = {**DEFAULT_PARAMS, **self.params, **overrides}
 
         # Kategorien einmalig aus den Trainingsdaten uebernehmen.
-        self._categories_ = {
-            c: pd.Categorical(data[c]).categories.tolist() for c in cat
-        }
+        self._categories_ = {c: pd.Categorical(data[c]).categories.tolist() for c in cat}
 
         for h in self.horizons:
             sub = data[data["horizon"] == h]
