@@ -63,8 +63,9 @@ def directional_accuracy(
     zum Forecast-Origin). Standardmaessig wird der jeweils vorherige Wert von
     ``y_true`` als Referenz verwendet.
 
-    Zeilen ohne definierte Richtung (Referenz NaN oder tatsaechliche Bewegung 0)
-    werden aus der Berechnung ausgeschlossen.
+    Zeilen ohne definierte Richtung werden ausgeschlossen: Referenz NaN,
+    tatsaechliche Bewegung 0 ODER vorhergesagte Bewegung 0 (z.B. Seasonal-Naive
+    bei h=Season: pred == Referenz -> Richtung nicht definiert).
 
     Returns
     -------
@@ -82,7 +83,7 @@ def directional_accuracy(
 
     d_true = np.sign(y_true - y_ref)
     d_pred = np.sign(y_pred - y_ref)
-    valid = np.isfinite(y_ref) & (d_true != 0)
+    valid = np.isfinite(y_ref) & (d_true != 0) & (d_pred != 0)
     if not valid.any():
         return float("nan")
     return float(np.mean(d_pred[valid] == d_true[valid]))

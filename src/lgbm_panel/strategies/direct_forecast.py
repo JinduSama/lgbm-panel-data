@@ -35,6 +35,20 @@ DEFAULT_PARAMS = {
 }
 
 
+
+def per_series_time_split(data: pd.DataFrame, valid_fraction: float) -> np.ndarray:
+    """
+    Boolean-Maske: True = Fit, False = Validierung.
+
+    Die letzten ``valid_fraction`` Ziele JEDER Serie sind Validierung. Ein
+    gepoolter Datum-Quantil wuerde bei ungleichen Serienlaengen ganze,
+    spaet startende Serien komplett in die Validierung schieben.
+    """
+    split_date = data.groupby("series", sort=False)["date"].transform(
+        lambda s: s.sort_values().quantile(1 - valid_fraction)
+    )
+    return (data["date"] <= split_date).to_numpy()
+
 @dataclass
 class DirectLGBM:
     """
@@ -75,13 +89,10 @@ class DirectLGBM:
             for c in cat:
                 X[c] = pd.Categorical(X[c], categories=self._categories_[c])
             y = sub["y"].values
-
             if valid_fraction > 0 and len(sub) > 200:
-                # Zeitlich sortierter Split (letzte n% als Validierung).
-                cutoff = sub["date"].quantile(1 - valid_fraction)
-                mask = sub["date"] <= cutoff
-                dtrain = lgb.Dataset(X[mask.values], label=y[mask.values])
-                dvalid = lgb.Dataset(X[~mask.values], label=y[~mask.values])
+                mask = per_series_time_split(sub, valid_fraction)
+                dtrain = lgb.Dataset(X[mask], label=y[mask])
+                dvalid = lgb.Dataset(X[~mask], label=y[~mask])
                 booster = lgb.train(
                     params,
                     dtrain,

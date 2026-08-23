@@ -140,6 +140,9 @@ def main() -> None:
     e8 = load("e8_combined")
     e9 = load("e9_tuning")
     e10 = load("e10_shap_drivers")
+    e11 = load("e11_m4_best")
+    e12 = load("e12_intervals")
+    e13 = load("e13_objective_ablation")
     parts: list[str] = []
 
     # ------------------------------------------------------------------ TOC
@@ -158,6 +161,9 @@ def main() -> None:
         "<li><a href='#e8'>E8 &middot; Alles zusammen</a></li>"
         "<li><a href='#e9'>E9 &middot; Hyperparameter-Tuning</a></li>"
         "<li><a href='#e10'>E10 &middot; Treiber-Attribution (TreeSHAP)</a></li>"
+        "<li><a href='#e11'>E11 &middot; Beste Formulierung vs. lokal (M4)</a></li>"
+        "<li><a href='#e12'>E12 &middot; Prognoseintervalle</a></li>"
+        "<li><a href='#e13'>E13 &middot; Objective-Ablation</a></li>"
         "<li><a href='#literatur'>Einordnung: Praxis &amp; Literatur</a></li>"
         "<li><a href='#synthese'>Gegen&uuml;berstellung</a></li>"
         "<li><a href='#takeaways'>Empfehlungen</a></li>"
@@ -244,7 +250,8 @@ def main() -> None:
             kpis.append(
                 (
                     f"{mase:.2f}",
-                    "MASE auf 400 echten M4-Serien (&lt;1 schl&auml;gt saisonale Naive, E5)",
+                    "MASE auf 400 echten M4-Serien - bester von drei Modellen, "
+                    "aber &gt;1: die 1-Schritt-Referenz bleibt hart (E5)",
                 )
             )
     if e8_drop:
@@ -301,13 +308,24 @@ immer noch Sekunden.</p>
 
 <h3>Backtest-Design</h3>
 <div class="card">
-<p>Expanding Window: Fold k trainiert auf allen Zielen bis Stichtag
-T<sub>k</sub> und testet auf die folgenden <code>step</code> Monate
-(<code>step = max(Horizonte)</code>, nicht-&uuml;berlappende Testfenster):</p>
+<p>Expanding Window mit je-Serie verankerten Folds: Fold k trainiert auf
+allen Zielen bis Stichtag T<sub>k</sub> und testet auf die folgenden
+<code>step</code> Monate (<code>step = max(Horizonte)</code>,
+nicht-&uuml;berlappende Testfenster). Auf Panelen mit ungleichen Serienenden
+(M4) liegt der Stichtag je Serie an deren eigenem Ende - jede Serie wird
+ueber ihre volle Traegerbreite evaluiert:</p>
 <pre><code>Historie:  |—————— Train ——————| Test |
 Fold 1:    |—————— T1 —————————|  T1+step  |
 Fold 2:    |—————————— T2 ————————|  T2+step  |
 Fold 3:    |—————————————— T3 ———————|  T3+step  |  (T3+step = Datenende)</code></pre>
+<p><strong>Fairer Baseline-Vergleich (origin-Protokoll):</strong> Jede Zeile
+hat einen eigenen Informationsstand <code>cutoff = target &minus; h</code>.
+Default "rolling": die Naive prognostiziert <code>y[cutoff]</code>, die
+Seasonal-Naive den letzten beobachteten Wert mit gleichem Kalendermonat -
+jeder bekommt exakt dieselben Informationen wie das LGBM zu derselben Zeile.
+"fixed" (optional, M4-Klassik): alle Modelle prognostizieren vom Fold-Stichtag.
+Metriken werden auf der gemeinsamen Nicht-NaN-Unterlage aller Modelle
+berechnet; Spalte <code>n</code> berichtet die Unterlagegroesse.</p>
 <p><strong>Metriken:</strong></p>
 <ul>
 <li><strong>MAE</strong> = Mittel |y&minus;&#375;| - robust, prim&auml;re Referenz</li>
@@ -316,9 +334,11 @@ Fold 3:    |—————————————— T3 ———————|
 <li><strong>Directional Accuracy</strong>: Anteil korrekter Richtungen
 sign(&#375;&minus;y<sub>ref</sub>) = sign(y&minus;y<sub>ref</sub>) mit
 y<sub>ref</sub> = letzter beobachteter Wert zum Forecast-Origin; Zeilen ohne
-definierte Richtung (Bewegung 0) werden ausgeschlossen</li>
+definierte Richtung - Bewegung 0 in Wahrheit <em>oder</em> in Vorhersage -
+werden ausgeschlossen (deshalb ist die rolling-Naive richtungs-unscharf:
+ihre Vorhersage IST der Referenzwert)</li>
 <li><strong>MASE</strong> (nur E5): MAE skaliert mit dem In-Sample-Fehler der
-1-Schritt-saisonalen Naive (m=12) derselben Serie; &lt; 1 hei&szlig;t besser
+1-Schritt-saisonalen Naive (m=12) derselben Serie; &lt; 1 hie&szlig;e besser
 als diese Referenz</li>
 </ul>
 </div>""")
@@ -407,13 +427,13 @@ eigenes Panel; identischer Backtest (3 Folds &times; 18 Monate).</p>
 optimal (Ratio &asymp; 1). Die wahre Funktion ist zu einfach - ein Baummodell
 kann hier nichts hinzuf&uuml;gen, au&szlig;er Rauschen zu lernen.</li>
 <li><strong>Rauschen dreht das Blatt:</strong> LGBM mittelt &uuml;ber 50 Serien und
-gewinnt 8-15&nbsp;% (Ratio 0.85-0.92) - Panel-Learning als Rauschfilter.</li>
+gewinnt 7-15&nbsp;% (Ratio 0.85-0.94) - Panel-Learning als Rauschfilter.</li>
 <li><strong>Trend ist der gr&ouml;&szlig;te Hebel:</strong> Bei exponentiellem Wachstum
-bleibt Seasonal-Naive 12 Monate zur&uuml;ck; LGBM erreicht nur 26-32&nbsp;% deren
+bleibt Seasonal-Naive 12 Monate zur&uuml;ck; LGBM erreicht nur 17-29&nbsp;% deren
 Fehler, weil Year-over-Year-Differenzen das Wachstum extrapolieren.</li>
-<li>Auch ohne Saisonalit&auml;t gewinnt LGBM auf strukturllosen Serien (Ratio
-0.74-0.80): die Serien-ID als kategoriales Feature lernt unterschiedliche
-Niveaus.</li>
+<li><strong>Auch ohne Saisonalit&auml;t gewinnt LGBM</strong> auf strukturllosen
+Serien (Ratio 0.76-0.80): die Serien-ID als kategoriales Feature lernt
+unterschiedliche Niveaus.</li>
 </ul>
 </div>""")
 
@@ -626,8 +646,11 @@ spricht, nicht ob es kausal richtig liegt.</li>
         parts.append(f"""
 <h2 id="e5">E5 &middot; Realer Benchmark: M4-Monatsdaten</h2>
 <p>{e5["n_series"]} zuf&auml;llig gezogene M4-Monatsserien (Wettbewerb: Monats-
-daten, Horizont 18), 2 Folds &times; 18 Monate Testfenster, identische Pipeline
-wie die synthetischen Studien.</p>
+daten, Horizont 18), 2 Folds &times; 18 Monate Testfenster. Protokoll: Folds
+sind je Serie an deren eigenem Ende verankert (M4-typische ungleiche
+Serienl&auml;ngen), Baselines prognostizieren rolling-origin aus demselben
+Informationsstand wie LGBM, und alle Metriken werden auf der gemeinsamen
+Nicht-NaN-Unterlage aller Modelle berechnet (Spalte <code>n</code>).</p>
 """)
         parts.append(
             setup_box(
@@ -658,11 +681,12 @@ wie die synthetischen Studien.</p>
         )
         parts.append(
             "<h3>MASE (gegen In-Sample-Seasonal-Naive skaliert)</h3>"
-            "<div class='card goodbox'><p>MASE &lt; 1 bedeutet: besser als die"
-            " saisonale Naive auf dem eigenen Historieniveau. <strong>Caveat:</strong>"
-            " MASE mittelt Verh&auml;ltnisse pro Serie - stark trendende Serien haben"
-            " gro&szlig;e In-Sample-Nenner und dominieren das Bild; deshalb sind die"
-            " MAE-/sMAPE-Charts oben die prim&auml;re Referenz.</p></div>"
+            "<div class='card'><p>MASE &lt; 1 hie&szlig;e: besser als die saisonale"
+            " Naive auf dem eigenen Historieniveau. <strong>Alle drei Modelle"
+            " liegen dar&uuml;ber</strong> - 18-Monats-Forecasts auf M4-Monatsdaten"
+            " schlagen die 1-Schritt-In-Sample-Referenz nicht; die <em>Reihenfolge</em>"
+            " LGBM vor Naive vor Seasonal-Naive ist die Aussage. Die MAE-/sMAPE-Charts"
+            " oben bleiben die prim&auml;re Referenz.</p></div>"
             f"<table><thead><tr><td>Modell</td><th>MASE</th></tr></thead>"
             f"<tbody>{mase_rows}</tbody></table>"
         )
@@ -681,16 +705,25 @@ wie die synthetischen Studien.</p>
             )
         parts.append("""
 <div class="card finding">
-<strong>Befunde.</strong>
+<strong>Befunde (korrigiertes Protokoll - die fr&uuml;heren
+"41&nbsp;% besser"-Zahlen waren ein Artefakt eingefrorener Baselines).</strong>
 <ul>
-<li><strong>Kurzer Horizont: LGBM klar vorne</strong> (h=1: MAE 291 vs 496/507
-- ~41&nbsp;% besser als beide Baselines).</li>
-<li><strong>Langer Horizont auf Levels: Seasonal-Naive holt auf</strong>
-(h=18: 496 vs 602). Exakt das E2/E6-Muster - ohne Zieltransformation
-kann LGBM Trendwachstum &uuml;ber 18 Monate nicht extrapolieren. Die
-Konsequenz aus E2 (Log-Saisondifferenzen) ist hier die offene Verbesserung.</li>
-<li><strong>Directional Accuracy:</strong> LGBM trifft die Richtung deutlich
-h&auml;ufiger als die Baselines (siehe results/e5_m4.json).</li>
+<li><strong>Kurzer Horizont: Gleichstand mit der Naive</strong> (h=1: MAE
+284 vs 284). Am 1-Schritt-Fenster einer echten Serie ist ein globales
+Baummodell nichts Besseres als "letzter Wert" - mehr Struktur gibt es dort
+nicht zu lernen.</li>
+<li><strong>Mittlerer Horizont: LGBM vorn</strong> (h=6: MAE 434 vs 489/538,
+~11&nbsp;% besser als die Naive); <strong>bei h=12 knapp dahinter</strong>
+(534 vs 518), <strong>bei h=18 wieder vorn</strong> (658 vs 697/763).
+LGBM gewinnt 3 von 4 Buckets, aber keineswegs &uuml;berall.</li>
+<li><strong>Directional Accuracy:</strong> wo definiert, trifft LGBM die
+Richtung am h&auml;ufigsten (~0.56-0.63 vs ~0.55-0.58 Seasonal-Naive). F&uuml;r
+die rolling-Naive ist Richtung per Konstruktion undefiniert
+(pred = letzter Wert, siehe Methoden-Box) und wird als n.v. berichtet.</li>
+<li><strong>Ehrliche Einordnung:</strong> E5 testet die schw&auml;chste
+Konfiguration (Levels + Default-Features). Der E2/E6-Hebel
+(Log-Saisondifferenzen) bleibt die offene Verbesserung auf echten Daten -
+siehe E11.</li>
 </ul>
 </div>""")
 
@@ -1013,9 +1046,122 @@ rechnet, darf sie nur kurzfristig wirken lassen - oder muss Pfad-Features
 <strong>D) Revisionen.</strong> Im Mittel entf\u00e4llt die gr\u00f6\u00dfte
 Revisionsmasse auf Target-Lags ({100 * rev.get("Target-Lags", 0):.0f}&nbsp;%)
 und Rolling ({100 * rev.get("Rolling-Stats", 0):.0f}&nbsp;%); der Treiber tr\u00e4gt
-{100 * rev.get("Treiber x", 0):.0f}&nbsp;% - aber genau dann stark, wenn er sich
-bewegt. Praxis-Nutzung: Forecasts gegen\u00fcber Stakeholdern als
-SHAP-Differenz zweier Origins erkl\u00e4ren statt als Blackbox-Update.
+den Rest. Praxis-Nutzung: Forecasts gegen&uuml;ber Stakeholdern als
+SHAP-Differenz zweier Origins erkl&auml;ren statt als Blackbox-Update.
+</div>""")
+    # ------------------------------------------------------------------ e11
+    if e11:
+        mo = e11["mase_overall"]
+        best = min(mo, key=mo.get)
+        parts.append("""
+<h2 id="e11">E11 &middot; Beste Formulierung gegen klassische lokale Modelle (M4)</h2>
+<p>Fixed-Origin-Blockprognosen wie im M4-Wettbewerb: jedes Modell
+prognostiziert 18 Monate vom eigenen fold_end. Arme: LGBM Levels (E5-Referenz),
+LGBM Log-Diff (E6-Gewinner), Ensemble beider, LGBM je Einzelserie
+(Cross-Learning aus), AutoETS und Theta als klassische lokale Kontrollen.
+Metriken auf gemeinsamer Unterlage.</p>
+""")
+        parts.append(
+            fig(
+                "e11_m4_best",
+                "Best-Formulation Benchmark",
+                "MAE ueber den Horizont. Gestrichelt: Baselines; durchgezogen: "
+                "ML-Arme und klassische lokale Modelle.",
+            )
+        )
+        mase_rows = "".join(
+            f"<tr><td>{k}</td><td{' class=hl' if k == best else ''}>{fmt(float(v), 3)}</td></tr>"
+            for k, v in sorted(mo.items(), key=lambda kv: kv[1])
+        )
+        parts.append(f"""
+<h3>MASE je Arm</h3>
+<table><thead><tr><td>Modell</td><th>MASE</th></tr></thead>
+<tbody>{mase_rows}</tbody></table>
+<div class="card finding">
+<strong>Befunde.</strong>
+<ul>
+<li><strong>Klassische lokale Modelle sind auf klassischem M4 hart:</strong>
+AutoETS und Theta schlagen alle LGBM-Varianten (MASE&nbsp;&asymp;&nbsp;0.93,
+als einzige unter 1). Das M4-Bild "statistische Verfahren vorn" gilt hier
+weiterhin - anders als in M5 (Retail, viele aehnliche Serien).</li>
+<li><strong>Cross-Learning ist real:</strong> globales Levels-LGBM (1.09)
+schlaegt dasselbe Modell je Serie (1.34) um ~18&nbsp;% MAE - aber es hebt
+das LGBM nicht ueber die lokalen Klassiker.</li>
+<li><strong>Ensemble hilft:</strong> Mittel aus Levels+Log-Diff ist der beste
+ML-Arm (1.03) - die zwei Formulierungen machen unterschiedliche Fehler.</li>
+</ul>
+</div>""")
+
+    # ------------------------------------------------------------------ e12
+    if e12:
+        rows = e12["rows"]
+        cov_rows = "".join(
+            f"<tr><td>{r['method']}</td><td>{int(r['horizon'])}</td>"
+            f"<td>{fmt(100 * float(r['coverage']), 1)}&nbsp;%</td>"
+            f"<td>{fmt(float(r['width']), 0)}</td></tr>"
+            for r in rows
+        )
+        parts.append("""
+<h2 id="e12">E12 &middot; Prognoseintervalle: Quantil-Regression vs. Conformal</h2>
+<p>Beide Ansaetze im Log-Raum (Skalen-Heterogenitaet), ausgewertet auf der
+Level-Skala: LightGBM-Quantile-Booster (alpha = 0.1/0.9) gegen
+Split-Conformal um die Punktprognose (signierte Residuen-Quantile,
+Kalibration auf den letzten 25&nbsp;% der Trainingsziele).</p>
+""")
+        parts.append(
+            fig(
+                "e12_intervals",
+                "Prognoseintervalle",
+                "Links empirische Coverage (Soll &ge; 80&nbsp;%), rechts die "
+                "dafuer noetige Intervallbreite.",
+            )
+        )
+        parts.append(f"""
+<table><thead><tr><td>Methode</td><th>Horizont</th><th>Coverage</th><th>Median-Breite</th></tr></thead>
+<tbody>{cov_rows}</tbody></table>
+<div class="card finding">
+<strong>Befunde.</strong>
+<ul>
+<li><strong>Split-Conformal liegt nahe am Soll</strong> (68-76&nbsp;% gegenueber
+80&nbsp;% nominal) - mit einer Zeile Code pro Seite und ohne Zusatzmodell.</li>
+<li><strong>Quantil-Regression unterschaetzt Unsicherheit</strong> auf echten,
+heterogenen Daten (58-69&nbsp;%) - die Baender sehen schlank aus, sind aber
+zu eng. Faustregel: Quantile kalibrieren, Conformal garantiert
+(unter Austauschbarkeit) approximativ.</li>
+</ul>
+</div>""")
+
+    # ------------------------------------------------------------------ e13
+    if e13:
+        ratio_lines = []
+        for scen, d in e13["scenarios"].items():
+            r = d["_ratio_vs_l2"]
+            span = {
+                m: f"{min(v.values()):.3f}-{max(v.values()):.3f}"
+                for m, v in r.items()
+                if m != "lgbm_l2"
+            }
+            ratio_lines.append(
+                f"<tr><td>{scen}</td>"
+                + "".join(f"<td>{span.get(m, '&ndash;')}</td>" for m in
+                          ("lgbm_l1", "lgbm_huber", "lgbm_quantile50"))
+                + "</tr>"
+            )
+        parts.append(f"""
+<h2 id="e13">E13 &middot; Trainings-Objective: lohnt sich L1/Huber/Quantile?</h2>
+<p>Vier Objectives, identischer Backtest (rolling origin), Metrik MAE -
+dargestellt als Ratio zu L2 (=1). Zwei Dokumentationen: LightGBMs
+Huber-Delta ist ABSOLUT (Default 0.9 kollabiert bei Labels &gt;&gt; 1 -
+hier auf 2&times;Std skaliert); Quantile(0.5) IST mathematisch L1
+(identische Baeume - die identischen Spalten bestaetigen das).</p>
+<table><thead><tr><td>Daten</td><th>L1</th><th>Huber</th><th>Quantile(0.5)</th></tr></thead>
+<tbody>{''.join(ratio_lines)}</tbody></table>
+<div class="card finding">
+<strong>Befund.</strong> Robuste Objectives bringen auf synthetischen,
+gaussnahen DGPs nichts (bis ~26&nbsp;% <em>schlechter</em> beim Median-Ziel
+auf Trend+Saison) und auf echten M4-Daten ~2-4&nbsp;% MAE-Vorteil fuer
+L1/Quantile. Der L2-Default bleibt eine gute erste Wahl; Huber nur mit
+skaliertem Delta einsetzen.
 </div>""")
 
     # ------------------------------------------------------------------ literatur
@@ -1028,8 +1174,11 @@ zwei Inspirationen (E9, E10):</p>
 <li><strong>Globale Modelle gewinnen Panel-Wettbewerbe.</strong> Die
 M5-Studie (Makridakis et&nbsp;al., IJF 2022): Alle Top-L&ouml;sungen sind
 globale Modelle, LightGBM dominiert; Cross-Learning &uuml;ber Serien ist
-der Kernvorteil. Deckungsgleich mit E1 (Panel-Learning als
-Rauschfilter) und E5 (MASE&nbsp;&lt;&nbsp;1 auf echten M4-Serien).
+der Kernvorteil. E1 st&uuml;tzt das (Panel-Learning als Rauschfilter); auf
+echten M4-Serien ist der Vorsprung gegen&uuml;ber der schlichten Naive mit
+der Default-Konfiguration aber klein und horizontabh&auml;ngig (E5) - die
+M5-Dominanz kommt vermutlich aus genau den Hebeln, die E2/E6/E8 zeigen
+(Zieltransformation, Features, Ensembles).
 <a href="https://www.sciencedirect.com/science/article/pii/S0169207021001722">M5 accuracy competition (IJF)</a></li>
 <li><strong>SHAP erkl&auml;rt das Modell, nicht die Welt.</strong>
 Praxis-Darstellungen zur SHAP-Nutzung im Forecasting betonen: Zeitstruktur
@@ -1065,10 +1214,11 @@ empirische Beleg und die Konsequenz f&uuml;r das Setup:</p>
 <tr><td>Additiver (linearer) Trend</td><td>E6-linear</td><td>YoY-Lags interpolieren ihn; Levels vertretbar, Log-Diffs nie schlechter</td></tr>
 <tr><td>Saisonalit&auml;t stark</td><td>E1, E7-Galerie</td><td>Lag-12 + rollende Fenster tragen sie; Seasonal-Naive nur als Referenz</td></tr>
 <tr><td>Saisonalit&auml;t fehlt/schwach</td><td>E7b-Raster</td><td>Empfehlungen bleiben gleich; Seasonal-Naive verliert ihren Anker komplett</td></tr>
-<tr><td>Exogener Treiber, stabiles Regime</td><td>E3, E8</td><td>Zusatzgewinn (~20&nbsp;% MAE bei h=18), am kurzen Horizont am gr&ouml;&szlig;ten; erkl&auml;rt zudem das Warum</td></tr>
+<tr><td>Viele verwandte Serien (Panel)</td><td>E1, E5, E11 (M4)</td><td>Panel-Learning filtert Rauschen (+~18&nbsp;% gg. Einzel-Fits, E11); am 1-Schritt-Fenster ist die Naive hart - und klassische lokale Modelle bleiben auf klassischem M4 vorn</td></tr>
+<tr><td>Unsicherheitsbaender geplant</td><td>E12</td><td>Split-Conformal um die Punktprognose haelt Coverage naeher am Soll als ungepruefte Quantil-Regression</td></tr>
+<tr><td>Ausreisser-/Schwanzdruck</td><td>E13</td><td>L1/Quantile(0.5) ~2-4&nbsp;% MAE auf echten Daten; Huber nur mit Delta auf Labelskala (Default kollabiert)</td></tr>
 <tr><td>Treiber-Intervention / Szenario</td><td>E4</td><td>Nur ein Modell mit kausalem Treiber + bekanntem Pfad trackt den Eingriff</td></tr>
 <tr><td>Strukturbruch im Trend</td><td>E6-Umkehr</td><td>Direkt-Formulierung friert das alte Regime ein; Rollout/kurzes Retraining adaptiert</td></tr>
-<tr><td>Viele verwandte Serien (Panel)</td><td>E5 (M4)</td><td>Globales Lernen schl&auml;gt Naive-Baselines auch auf echten Daten robust</td></tr>
 <tr><td>Hyperparameter-Druck</td><td>E9</td><td>Defaults halten (&le;6&nbsp;% Gewinn, bis &minus;16&nbsp;% Verlust bei Br&uuml;chen); Hebel sind Formulierung &amp; Features</td></tr>
 <tr><td>&quot;Warum sagt das Modell das?&quot;</td><td>E10</td><td>TreeSHAP auf eingefrorenem Modell; Attribution gegen Wahrheit triangulieren, Revisionen als Erkl&auml;rungsformat nutzen</td></tr>
 </tbody></table>
@@ -1103,12 +1253,14 @@ Szenario-Features ins Modell (E4: 49&nbsp;% &rarr; 93&nbsp;% Directional Accurac
 unter Intervention). Persistente oder geplante Treiber lohnen sich;
 schnell vergessene AR(1)-Treiber nur am kurzen Horizont.</li>
 <li><strong>Backtest-Hygiene:</strong> Trainingszeilen nur mit
-<code>target_date &le; Fold-Ende</code>; Directional Accuracy immer gegen den
-letzten beobachteten Wert; MASE-Verh&auml;ltnisse mit Vorsicht genie&szlig;en (E5).</li>
+<code>target_date &le; Fold-Ende</code>; Baselines rolling-origin aus demselben
+Informationsstand wie das Modell (frozen Baselines haben E5 einst ~41&nbsp;%
+Phantomvorsprung suggeriert); Metriken auf gemeinsamer Unterlage;
+Directional Accuracy nur wo Richtung definiert ist.</li>
 <li><strong>Erkl&auml;rung &ne; Prognoseg&uuml;te:</strong> Importance unter
 Regime-Daten sagt nichts &uuml;ber kausale Richtigkeit. Interventionstests
 (auch simulierte) sind der H&auml;rtetest (E4). Importance immer triangulieren:
-SHAP + Gain + Ablation + Intervention (E10: Treiber bekommt 3&nbsp;% Budget,
+SHAP + Gain + Ablation + Intervention (E10: Treiber bekommt ~3&nbsp;% Budget,
 tr&auml;gt aber 24&nbsp;% des wahren Signals).</li>
 <li><strong>Revisionen erkl&auml;ren, nicht verstecken:</strong> Wenn ein
 Forecast sich zwischen zwei Origins &auml;ndert, ist die SHAP-Differenz der
@@ -1138,6 +1290,9 @@ invalidiert still die Vergleichsstudie).</li>
 <tr><td>E8</td><td>Alles kombiniert: Trend + Saison + Treiber, 2&times;2 Ans&auml;tze</td><td>1 realistisches DGP (alle Eigenschaften)</td><td>LGBM (4 Zellen), SNaive</td></tr>
 <tr><td>E9</td><td>Lohnt Hyperparameter-Tuning?</td><td>5 Szenarien (E6/E8-DGPs, M4)</td><td>LGBM (Optuna, 40 Trials)</td></tr>
 <tr><td>E10</td><td>Was treibt die Prognose? Attribution vs. wahres DGP</td><td>60 Serien &times; 168 Monate, bekanntes DGP</td><td>LGBM + TreeSHAP (nativ)</td></tr>
+<tr><td>E11</td><td>Beste Formulierung vs. klassisch-lokal</td><td>M4, 400 Serien, fixed origin</td><td>LGBM (Levels/LogDiff/Ensemble/je-Serie), AutoETS, Theta, Baselines</td></tr>
+<tr><td>E12</td><td>Prognoseintervalle: Quantil vs. Conformal</td><td>M4, 200 Serien, Log-Raum</td><td>Quantil-LGBM, Split-Conformal</td></tr>
+<tr><td>E13</td><td>Objective-Ablation (L2/L1/Huber/Q50)</td><td>3 synthetische Szenarien + M4 (150)</td><td>LGBM mit Objective-Overrides</td></tr>
 </tbody></table>
 <h3>Ausf&uuml;hren</h3>
 <pre><code>uv sync
@@ -1151,6 +1306,9 @@ uv run python studies/e7_gallery.py
 uv run python studies/e8_combined.py
 uv run python studies/e9_tuning.py
 uv run python studies/e10_shap_drivers.py
+uv run python studies/e11_m4_best.py
+uv run python studies/e12_intervals.py
+uv run python studies/e13_objective_ablation.py
 uv run python studies/build_report.py   # diesen Report neu bauen</code></pre>
 <p>Jede Studie schreibt <code>reports/results/&lt;name&gt;.json</code> und
 Abbildungen nach <code>reports/assets/</code>. Der Report embeddet beides

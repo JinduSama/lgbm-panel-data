@@ -21,25 +21,25 @@ import pandas as pd
 from _common import MODEL_COLORS, MODEL_LABELS, MODELS, metrics_dict, save_fig, save_result
 
 from lgbm_panel.data import load_dataset
-from lgbm_panel.experiments import expanding_backtest
+from lgbm_panel.experiments import expanding_backtest, per_series_fold_ends
 
 HORIZONS = (1, 6, 12, 18)
 N_SERIES = 400
 
 
-def mase_scale(df: pd.DataFrame, train_end: pd.Timestamp) -> pd.Series:
+def mase_scale(df: pd.DataFrame, fold_ends: pd.Series) -> pd.Series:
     """
-    In-Sample-Skala je Serie: MAE der 1-Schritt-saisonalen Naive (m=12)
-    ueber alle beobachteten Monate bis ``train_end``.
+    In-Sample-MAE der saisonalen Differenz (m=12) je Serie, nur Historie
+    bis zum EIGENEN fold_end der Serie (konsistent zum Backtest-Fenster).
     """
-    hist = df[df["date"] <= train_end].sort_values(["series", "date"])
+    d = df.merge(fold_ends.rename("fe"), on="series", how="left")
+    hist = d[d["date"] <= d["fe"]].sort_values(["series", "date"])
     diff = hist.groupby("series")["value"].diff(12).abs()
     return diff.groupby(hist["series"]).mean()
 
 
 def run() -> dict:
     df = load_dataset("m4", n_series=N_SERIES)
-
     res = expanding_backtest(
         df,
         horizons=HORIZONS,
@@ -51,11 +51,11 @@ def run() -> dict:
 
     # --- MASE aus den Vorhersagen ----------------------------------------
     preds = res.predictions.copy()
-    fold_ends = {int(f): g["cutoff"].max() for f, g in preds.groupby("fold")}
-    scales = {f: mase_scale(df, end) for f, end in fold_ends.items()}
+    fold_end_map = per_series_fold_ends(df, n_folds=2, step_months=max(HORIZONS))
+    scales = {f: mase_scale(df, fe) for f, fe in fold_end_map.items()}
     rows = []
     for (model, fold, series), grp in preds.groupby(["model", "fold", "series"]):
-        s = scales[fold].get(series, np.nan)
+        s = scales[int(fold)].get(series, np.nan)
         if not np.isfinite(s) or s <= 0:
             continue
         err = np.mean(np.abs(grp["y"] - grp["pred"]))

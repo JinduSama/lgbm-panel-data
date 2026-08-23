@@ -27,7 +27,10 @@ class FeatureConfig:
     lags: Sequence[int] = (1, 2, 3, 6, 12, 13, 18, 24)
     rolling_windows: Sequence[int] = (3, 6, 12)
     rolling_stats: tuple[str, ...] = ("mean", "std", "min", "max")
-    time_features: tuple[str, ...] = ("month", "quarter", "year")
+    # Kein absolutes "year": Baeume koennen nicht extrapolieren und memorieren
+    # stattdessen Niveau-Trends (vgl. E5-Importance). Monat/Quarter fangen die
+    # Saisonalitaet; Trendsteigung kommt aus Lags/Rolling-Features.
+    time_features: tuple[str, ...] = ("month", "quarter")
     diff_lags: Sequence[int] = (1, 12)
     use_cross_sectional: bool = False
     exog_lags: tuple[int, ...] = (0, 1)
@@ -74,7 +77,6 @@ def build_supervised(
     g = df.groupby("series", sort=False)["value"]
 
     # --- Lags (nur Vergangenheit relativ zum Cutoff) -------------------
-    max_lag = max(cfg.lags)
     for lag in cfg.lags:
         df[f"lag_{lag}"] = g.shift(lag)
 
@@ -86,6 +88,9 @@ def build_supervised(
             )
 
     # --- Differenzen (Saisondifferenz -12) -----------------------------
+    # NaNs absichtlich behalten: LightGBM kann mit fehlenden Werten umgehen,
+    # und dropna hier wuerde die ersten max(diff_lags) Monate jeder Serie
+    # unnoetig verwerfen.
     for d in cfg.diff_lags:
         df[f"diff_{d}"] = g.diff(d)
     # --- Exogene Treiber (am Cutoff beobachtet -> leakage-frei) --------
@@ -128,7 +133,7 @@ def build_supervised(
         df[f"target_date_h{h}"] = df.groupby("series", sort=False)["date"].shift(-h)
 
     # --- Zeilen mit unvollstaendiger Historie verwerfen ----------------
-    needed = [f"lag_{lag}" for lag in cfg.lags if lag <= max_lag]
+    needed = [f"lag_{lag}" for lag in cfg.lags]
     df = df.dropna(subset=needed).reset_index(drop=True)
 
     # --- Long-Format: eine Zeile pro (cutoff, horizon) -----------------

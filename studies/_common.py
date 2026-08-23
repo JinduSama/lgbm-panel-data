@@ -41,7 +41,25 @@ def save_fig(fig: plt.Figure, name: str) -> str:
 
 
 def save_result(name: str, payload: dict) -> None:
-    """Schreibt Kennzahlen als JSON nach reports/results/<name>.json."""
+    """Schreibt Kennzahlen als JSON nach reports/results/<name>.json.
+
+    Stamppt Reproduzierbarkeit-Metadaten (Git-SHA falls verfuegbar,
+    UTC-Zeitstempel) in das Payload unter ``_meta``."""
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    import subprocess
+
+    meta: dict = {"created_utc": pd.Timestamp.utcnow().isoformat()}
+    try:
+        sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+        if sha:
+            meta["git_sha"] = sha
+    except Exception:
+        pass
     RESULTS.mkdir(parents=True, exist_ok=True)
 
     def _clean(obj):
@@ -57,7 +75,9 @@ def save_result(name: str, payload: dict) -> None:
             return obj
         raise TypeError(f"nicht serialisierbar: {type(obj)}")
 
-    (RESULTS / f"{name}.json").write_text(json.dumps(_clean(payload), indent=2))
+    stamped = dict(payload)
+    stamped["_meta"] = meta
+    (RESULTS / f"{name}.json").write_text(json.dumps(_clean(stamped), indent=2))
 
 
 def metrics_dict(metrics: pd.DataFrame) -> dict:
@@ -66,7 +86,7 @@ def metrics_dict(metrics: pd.DataFrame) -> dict:
     for model, grp in metrics.groupby("model"):
         out[model] = {
             str(int(h)): row
-            for h, row in grp.set_index("horizon")[["mae", "rmse", "smape", "dir_acc"]]
+            for h, row in grp.set_index("horizon")[["n", "mae", "rmse", "smape", "dir_acc"]]
             .to_dict("index")
             .items()
         }
