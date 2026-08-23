@@ -21,3 +21,7 @@ results/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Datendateien (gross / Scratch)
+monthly-train.csv
+m4*.json
