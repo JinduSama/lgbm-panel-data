@@ -143,6 +143,8 @@ def main() -> None:
     e11 = load("e11_m4_best")
     e12 = load("e12_intervals")
     e13 = load("e13_objective_ablation")
+    e14 = load("e14_chronos_m4")
+    e15 = load("e15_chronos_exog")
     parts: list[str] = []
 
     # ------------------------------------------------------------------ TOC
@@ -164,6 +166,8 @@ def main() -> None:
         "<li><a href='#e11'>E11 &middot; Beste Formulierung vs. lokal (M4)</a></li>"
         "<li><a href='#e12'>E12 &middot; Prognoseintervalle</a></li>"
         "<li><a href='#e13'>E13 &middot; Objective-Ablation</a></li>"
+        "<li><a href='#e14'>E14 &middot; Foundation Models (M4)</a></li>"
+        "<li><a href='#e15'>E15 &middot; Budgetpl&auml;ne als Kovariaten</a></li>"
         "<li><a href='#literatur'>Einordnung: Praxis &amp; Literatur</a></li>"
         "<li><a href='#synthese'>Gegen&uuml;berstellung</a></li>"
         "<li><a href='#takeaways'>Empfehlungen</a></li>"
@@ -1164,6 +1168,94 @@ L1/Quantile. Der L2-Default bleibt eine gute erste Wahl; Huber nur mit
 skaliertem Delta einsetzen.
 </div>""")
 
+    # ------------------------------------------------------------------ e14
+    if e14:
+        mo = e14["mase_overall"]
+        mase_rows = "".join(
+            f"<tr><td>{k}</td><td{' class=hl' if k == min(mo, key=mo.get) else ''}>{fmt(float(v), 3)}</td></tr>"
+            for k, v in sorted(mo.items(), key=lambda kv: kv[1])
+        )
+        parts.append("""
+<h2 id="e14">E14 &middot; Foundation Models auf M4: Chronos-Bolt &amp; Chronos-2</h2>
+<p>Dieselben Daten, dasselbe Fixed-Origin-Protokoll wie E11 - aber die
+Foundation-Modelle laufen strikt Null-Shot (nur Inferenz, kein Training,
+kein Fine-Tuning): Chronos-Bolt-Base (univariate, T5-Encoder-Decoder,
+quantile heads) und Chronos-2 (universal In-Context-Learning).</p>
+""")
+        parts.append(
+            fig(
+                "e14_chronos_m4",
+                "Foundation Models vs. trainierte Arme",
+                "MAE je Horizont. Chronos-2 startet am kurzen Horizont vorn; "
+                "Bolt ohne Kovariaten/Transformation verliert die Trendspur "
+                "(inverses Horizontprofil).",
+            )
+        )
+        parts.append(f"""
+<h3>MASE je Arm</h3>
+<table><thead><tr><td>Modell</td><th>MASE</th></tr></thead>
+<tbody>{mase_rows}</tbody></table>
+<div class="card finding">
+<strong>Befunde.</strong>
+<ul>
+<li><strong>Chronos-2 spielt sofort oben mit:</strong> MASE&nbsp;0.938 -
+auf dem Niveau von Theta/AutoETS (0.932/0.936), vor allen LGBM-Armen;
+am kurzen Horizont die beste Einzelprognose (MAE&nbsp;178 vs 184/186).
+Null-Shot, ohne eine Zeile Training.</li>
+<li><strong>Chronos-Bolt enttaeuscht auf diesem Panel</strong> (MASE&nbsp;1.66,
+h=1: MAE&nbsp;730): univariate Level-Prognosen ohne Extrapolationshilfe
+verlieren auf stark trendenden Serien die Spur - das inverses
+Horizontprofil (schlechter bei h=1 als bei h=18) ist das Symptom.
+Bolt ist fuer Geschwindigkeit optimiert, nicht fuer dieses Regime.</li>
+<li><strong>Einordnung zu E11:</strong> Der Abstand klassisch-lokal vs.
+global-ML schliesst sich durch Foundation-Modelle von oben - nicht durch
+das trainierte LGBM von unten.</li>
+</ul>
+</div>""")
+
+    # ------------------------------------------------------------------ e15
+    if e15:
+        mm = e15["metrics"]
+        rows = []
+        for m in ("lgbm_levels", "lgbm_levels_x", "chronos-bolt-base", "chronos-2", "chronos-2-x"):
+            if m not in mm:
+                continue
+            cells = "".join(
+                f"<td>{fmt(float(mm[m][h]['mae']), 1)}</td>" for h in ("1", "6", "12", "18")
+            )
+            da = mm[m]["18"].get("dir_acc")
+            da_s = fmt(100 * float(da), 0) + "&nbsp;%" if da == da and da is not None else "n.v."
+            rows.append(f"<tr><td>{m}</td>{cells}<td>{da_s}</td></tr>")
+        parts.append(f"""
+<h2 id="e15">E15 &middot; Budgetpl&auml;ne als Zukunftskovariate: nutzt sie jemand?</h2>
+<p>Synthesewelt wie E8 (Trend + Saison + persistenter Treiber <code>x</code>,
+60 Serien); der Treiberpfad ist zum Prognosezeitpunkt <em>bekannt</em> -
+Budgetplan-Semantik. LGBM bekommt ihn als Szenario-Feature (E4/E8-Muster),
+Chronos-2 nativ als Zukunftskovariate, Chronos-Bolt kann ihn nicht sehen.
+MAE je Horizont und Directional Accuracy bei h=18:</p>
+<table><thead><tr><td>Modell</td><th>h=1</th><th>h=6</th><th>h=12</th><th>h=18</th><th>DirAcc h=18</th></tr></thead>
+<tbody>{''.join(rows)}</tbody></table>
+<div class="card finding">
+<strong>Befunde.</strong>
+<ul>
+<li><strong>Trainiertes LGBM mit Plan bleibt vorn</strong> (h=18: MAE&nbsp;46.5,
+~10-30&nbsp;% besser als seine eigene Ablation ohne Treiber - das E8-Muster
+repliziert).</li>
+<li><strong>Chronos-2 f&auml;ngt den Treiber Null-Shot gro&szlig;teils ein:</strong>
+mit Kovariate schlaegt es seine eigene univariate Variante um ~8-15&nbsp;%
+(h=18: 52.0 vs 58.4, DirAcc 0.683&rarr;0.767) und liegt am kurzen Horizont
+sogar vor dem trainierten LGBM (h=1: 11.4 vs 12.4). Der Restabstand zum
+LGBM+Szenario oeffnet sich erst ab h=12.</li>
+<li><strong>Chronos-Bolt kann per Design nicht davon profitieren</strong> und
+bliest das Niveau: inverses Profil wie in E14 (h=1: 103 vs naive 13.6),
+nur im langen Horizont konkurrenzfaehig.</li>
+<li><strong>Praxis-Fazit:</strong> Zukunftswissen ist der Hebel, der unsere
+Studien durchgehend zeigen - Foundation-Modelle machen ihn jetzt
+inferenz-only nutzbar, aber trainierte Modelle mit Szenario-Features
+setzen ihn bei weitem Horizont immer noch praeziser um.</li>
+</ul>
+</div>""")
+
     # ------------------------------------------------------------------ literatur
     parts.append("""
 <h2 id="literatur">Einordnung: was Praxis &amp; Literatur dazu sagen</h2>
@@ -1220,7 +1312,8 @@ empirische Beleg und die Konsequenz f&uuml;r das Setup:</p>
 <tr><td>Treiber-Intervention / Szenario</td><td>E4</td><td>Nur ein Modell mit kausalem Treiber + bekanntem Pfad trackt den Eingriff</td></tr>
 <tr><td>Strukturbruch im Trend</td><td>E6-Umkehr</td><td>Direkt-Formulierung friert das alte Regime ein; Rollout/kurzes Retraining adaptiert</td></tr>
 <tr><td>Hyperparameter-Druck</td><td>E9</td><td>Defaults halten (&le;6&nbsp;% Gewinn, bis &minus;16&nbsp;% Verlust bei Br&uuml;chen); Hebel sind Formulierung &amp; Features</td></tr>
-<tr><td>&quot;Warum sagt das Modell das?&quot;</td><td>E10</td><td>TreeSHAP auf eingefrorenem Modell; Attribution gegen Wahrheit triangulieren, Revisionen als Erkl&auml;rungsformat nutzen</td></tr>
+<tr><td>Ausreisser-/Schwanzdruck</td><td>E13</td><td>L1/Quantile(0.5) ~2-4&nbsp;% MAE auf echten Daten; Huber nur mit Delta auf Labelskala (Default kollabiert)</td></tr>
+<tr><td>Zukunftsbekannte Treiber + Null-Shot-Anforderung</td><td>E15</td><td>Chronos-2 nutzt Budgetplaene inferenz-only (~8-15&nbsp;%); trainiertes LGBM+Szenario bleibt bei weiten Horizonten vorn</td></tr>
 </tbody></table>
 <div class="card finding">
 <strong>Der rote Faden.</strong> Kein Ergebnis widerspricht einem anderen -
@@ -1293,6 +1386,8 @@ invalidiert still die Vergleichsstudie).</li>
 <tr><td>E11</td><td>Beste Formulierung vs. klassisch-lokal</td><td>M4, 400 Serien, fixed origin</td><td>LGBM (Levels/LogDiff/Ensemble/je-Serie), AutoETS, Theta, Baselines</td></tr>
 <tr><td>E12</td><td>Prognoseintervalle: Quantil vs. Conformal</td><td>M4, 200 Serien, Log-Raum</td><td>Quantil-LGBM, Split-Conformal</td></tr>
 <tr><td>E13</td><td>Objective-Ablation (L2/L1/Huber/Q50)</td><td>3 synthetische Szenarien + M4 (150)</td><td>LGBM mit Objective-Overrides</td></tr>
+<tr><td>E14</td><td>Foundation Models vs. trainierte Arme (Null-Shot)</td><td>M4, 400 Serien, fixed origin</td><td>Chronos-Bolt, Chronos-2 + E11-Arme</td></tr>
+<tr><td>E15</td><td>Budgetplan als Zukunftskovariate</td><td>Synthetik mit Treiber, 60 Serien</td><td>LGBM&plusmn;Szenario, Bolt, Chronos-2&plusmn;Kovariate</td></tr>
 </tbody></table>
 <h3>Ausf&uuml;hren</h3>
 <pre><code>uv sync
@@ -1307,8 +1402,9 @@ uv run python studies/e8_combined.py
 uv run python studies/e9_tuning.py
 uv run python studies/e10_shap_drivers.py
 uv run python studies/e11_m4_best.py
-uv run python studies/e12_intervals.py
 uv run python studies/e13_objective_ablation.py
+uv run python studies/e14_chronos_m4.py
+uv run python studies/e15_chronos_exog.py
 uv run python studies/build_report.py   # diesen Report neu bauen</code></pre>
 <p>Jede Studie schreibt <code>reports/results/&lt;name&gt;.json</code> und
 Abbildungen nach <code>reports/assets/</code>. Der Report embeddet beides
