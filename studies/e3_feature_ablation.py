@@ -24,8 +24,8 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from _common import metrics_dict, save_fig, save_result
 
+from _common import metrics_dict, save_fig, save_result
 from lgbm_panel.experiments import ModelSpec, expanding_backtest
 from lgbm_panel.features import FeatureConfig
 

@@ -22,8 +22,8 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from _common import save_fig, save_result
 
+from _common import save_fig, save_result
 from lgbm_panel.data import make_panel
 from lgbm_panel.experiments import expanding_backtest
 

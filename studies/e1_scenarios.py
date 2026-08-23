@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 
 import matplotlib.pyplot as plt
+
 from _common import (
     MODEL_COLORS,
     MODEL_LABELS,
@@ -24,7 +25,6 @@ from _common import (
     save_fig,
     save_result,
 )
-
 from lgbm_panel.data import make_panel
 from lgbm_panel.experiments import expanding_backtest
 

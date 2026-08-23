@@ -33,8 +33,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import optuna
 import pandas as pd
-from _common import save_fig, save_result
 
+from _common import save_fig, save_result
 from lgbm_panel.data import load_dataset
 from lgbm_panel.features import FeatureConfig, build_supervised
 from lgbm_panel.strategies import DirectLGBM

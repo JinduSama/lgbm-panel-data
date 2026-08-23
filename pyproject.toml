@@ -43,6 +43,11 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.isort]
+# Explizit pinnen: Die First-Party-Erkennung ueber das Dateisystem ist
+# plattformabhaengig (Linux-CI vs. Windows-Workspace) und hat zu
+# Inkonsistenten zwischen lokalem Lint und CI gefuehrt.
+known-first-party = ["lgbm_panel", "_common"]
 
 [tool.ruff.lint.per-file-ignores]
 # Eingebettete HTML-/Prosa-Zeilen im Report-Builder nicht umbrechen.

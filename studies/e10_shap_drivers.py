@@ -38,8 +38,8 @@ import e3_feature_ablation as e3
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from _common import save_fig, save_result
 
+from _common import save_fig, save_result
 from lgbm_panel.features import FeatureConfig, build_supervised
 from lgbm_panel.strategies import DirectLGBM
 

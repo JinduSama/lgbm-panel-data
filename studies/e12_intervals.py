@@ -29,8 +29,8 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from _common import save_fig, save_result
 
+from _common import save_fig, save_result
 from lgbm_panel.data import load_dataset
 from lgbm_panel.experiments import per_series_fold_ends
 from lgbm_panel.features import FeatureConfig, TargetTransform, build_supervised

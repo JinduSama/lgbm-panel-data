@@ -20,8 +20,8 @@ import e6_levels_vs_logdiff as e6
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from _common import save_fig
 
+from _common import save_fig
 from lgbm_panel.data import load_dataset
 from lgbm_panel.features import build_supervised
 from lgbm_panel.strategies import DirectLGBM
