@@ -1,24 +1,26 @@
 """
-E6 - Level- vs. Log-Differenz-Prognosen: direkte Formulierung vs. Rekursion.
+E6 - Level- vs. Log-Differenz-Prognosen ueber Trend-Regime.
 
 Fragestellung: Sind direkte Level-Forecasts besser als Log-Differenz-
-Forecasts? Und was kostet die Rekursivitaet bei Differenzen?
+Forecasts - und was kostet die Rekursivitaet der Differenzen? Und: Wie
+aendert sich die Antwort mit Form und Richtung des Trends?
 
-Vier Varianten auf identischem DGP (starker exponentieller Trend + Saison):
-    direct_level    : ein LGBM pro Horizont auf rohen Levels
-    seasonal_naive  : Referenz-Baseline
-    direct_logdiff  : ein LGBM pro Horizont auf der h-Schritt-Log-Aenderung
-                      log y[t+h] - log y[t]  -> KEINE Rekursion noetig,
-                      Rekonstruktion exp(log y[t] + pred)
-    recursive_logdiff: EIN Modell fuer 1-Schritt-Log-Aenderungen, das fuer
-                      h Schritte mit den eigenen Vorhersagen weiterspielt
-                      (Lags/Rolling werden aus Prognosen fortgeschrieben)
+Fuenf Trend-Regime, jeweils vier Varianten:
+    direct_level     : ein LGBM pro Horizont auf rohen Levels
+    seasonal_naive   : Referenz-Baseline
+    direct_logdiff   : ein LGBM pro Horizont auf der h-Schritt-Log-Aenderung
+                       log y[t+h] - log y[t]; Rekonstruktion aus dem
+                       beobachteten Anker exp(log y[t] + pred)
+    recursive_logdiff: EIN Modell fuer 1-Schritt-Aenderungen, Rollout mit
+                       eigenen Prognosen als Lags
 
-Erkenntnis-Ziele:
-- Levels: Extrapolationsproblem bei Trend (siehe E2).
-- Direkte Log-Differenzen: stabil ueber alle Horizonte, kein Schneeball.
-- Rekursive Log-Differenzen: Fehler akkumulieren mit dem Horizont, weil jede
-  Stufe auf den Unschaerfen der vorherigen Prognosen aufbaut.
+Regime:
+    kein_trend       : growth = 0                     (stationaer + Saison)
+    leicht_trendend  : growth 0.2-0.5 %/Monat         (~2.4-6 %/Jahr)
+    linear_trendend  : additiv +2..6 Einheiten/Monat
+    stark_trendend   : growth 1.2-3 %/Monat           (wie alte E6-Version)
+    trendumkehr      : +1.5-2.5 %/Monat bis Monat 96,
+                       danach -60 % der Wachstumsrate (Strukturbruch)
 """
 
 from __future__ import annotations
@@ -28,17 +30,17 @@ import numpy as np
 import pandas as pd
 from _common import save_fig, save_result
 
-from lgbm_panel.data import make_panel
 from lgbm_panel.experiments import ModelSpec, expanding_backtest
 from lgbm_panel.features import FeatureConfig, build_supervised
 from lgbm_panel.strategies import DirectLGBM
 
 HZ = (1, 3, 6, 12, 18)
 N_FOLDS = 3
+N_SERIES = 60
+N_PERIODS = 144
 # Explizit ohne Exogena: verhindert, dass Hilfsspalten als Features einschleppen.
 DIRECT_CFG = FeatureConfig(exog_cols=())
 
-# Feature-Set des rekursiven Modells (wird im Rollout manuell gespiegelt).
 R_LAGS = (1, 2, 3, 6, 12)
 R_WINDOWS = (3, 12)
 RCFG = FeatureConfig(
@@ -49,6 +51,54 @@ RCFG = FeatureConfig(
     time_features=("month",),
     exog_cols=(),
 )
+
+REGIMES: dict[str, dict] = {
+    "kein_trend": {"kind": "exp", "growth": (0.0, 0.0)},
+    "leicht_trendend": {"kind": "exp", "growth": (0.002, 0.005)},
+    "linear_trendend": {"kind": "linear", "slope": (2.0, 6.0)},
+    "stark_trendend": {"kind": "exp", "growth": (0.012, 0.03)},
+    "trendumkehr": {"kind": "reversal", "growth": (0.015, 0.025), "switch": 96},
+}
+
+
+def _panel(regime: dict, seed: int) -> pd.DataFrame:
+    """
+    Panel fuer ein Regime (lokal gebaut, Spiegel von make_panel).
+
+    Bewusst hohe Basis-Level (>= 80): Saison (bis 35 abs.) und Rauschen
+    duerfen nie negative Werte erzeugen - sonst produziert der Log
+    Clipping-Spikes und die Log-Differenz-VariantenMuell-Labels.
+    """
+    rng = np.random.default_rng(seed)
+    dates = pd.date_range("2015-01-01", periods=N_PERIODS, freq="MS")
+    frames = []
+    for s in range(N_SERIES):
+        t = np.arange(N_PERIODS, dtype=float)
+        amp = rng.uniform(15.0, 35.0)
+        phase = rng.uniform(0, 2 * np.pi)
+        eps = np.zeros(N_PERIODS)
+        shocks = rng.normal(0, rng.uniform(2.0, 5.0), N_PERIODS)
+        for i in range(1, N_PERIODS):
+            eps[i] = 0.3 * eps[i - 1] + shocks[i]
+        season = amp * np.sin(2 * np.pi * t / 12.0 + phase)
+
+        if regime["kind"] == "linear":
+            level = rng.uniform(150, 400)
+            slope = rng.uniform(*regime["slope"])
+            y = level + slope * t + season + eps
+        elif regime["kind"] == "reversal":
+            # Wachstum kippt am Stichtag ins Negative (-60 % der Rate).
+            level = rng.uniform(120, 350)
+            g_up = rng.uniform(*regime["growth"])
+            g = np.where(t < regime["switch"], g_up, -0.6 * g_up)
+            y = level * np.exp(np.cumsum(g)) + season + eps
+        else:
+            level = rng.uniform(80, 400)
+            growth = rng.uniform(*regime["growth"])
+            y = level * np.exp(growth * t) + season + eps
+
+        frames.append(pd.DataFrame({"series": f"S{s:03d}", "date": dates, "value": y}))
+    return pd.concat(frames, ignore_index=True)
 
 
 def _fold_ends(grid: pd.DatetimeIndex, step: int) -> list[pd.Timestamp]:
@@ -70,22 +120,14 @@ def _row_from_history(hist: np.ndarray, date: pd.Timestamp) -> dict[str, float]:
     return row
 
 
-def run() -> dict:
-    raw = make_panel(
-        n_series=60,
-        n_periods=144,
-        horizon=max(HZ),
-        seed=33,
-        trend_growth=(0.012, 0.03),
-        seasonal_strength=(15.0, 35.0),
-        noise_scale=(2.0, 5.0),
-    )
+def _run_regime(raw: pd.DataFrame) -> dict[str, dict]:
+    """Vier-Varianten-Vergleich auf einem Panel; Metriken auf Levels."""
     log_df = raw.assign(value=np.log(raw["value"].clip(lower=1e-6)))
     grid = pd.DatetimeIndex(sorted(raw["date"].unique()))
     ends = _fold_ends(grid, max(HZ))
     level_lookup = raw.set_index(["series", "date"])["value"]
 
-    # ---------------------------------------------------------- 1) Engine-Modelle
+    # 1) Engine-Modelle: Levels + Baseline.
     engine = expanding_backtest(
         raw,
         horizons=HZ,
@@ -93,8 +135,17 @@ def run() -> dict:
         n_folds=N_FOLDS,
         step_months=max(HZ),
     )
+    summary: dict[str, dict] = {
+        m: {
+            str(int(h)): row
+            for h, row in grp.set_index("horizon")
+            [["mae", "rmse", "smape", "dir_acc"]].to_dict("index").items()
+        }
+        for m, grp in engine.metrics_by_horizon.groupby("model")
+    }
+    summary.pop("naive", None)
 
-    # ---------------------------------------------------- 2) Direkt auf Log-Diff
+    # 2) Direkt auf Log-Diffs.
     sup = build_supervised(log_df, horizons=HZ, config=DIRECT_CFG).merge(
         log_df[["series", "date", "value"]].rename(columns={"value": "y_ref"}),
         on=["series", "date"],
@@ -108,36 +159,33 @@ def run() -> dict:
         test = sup[(sup["target_date"] > fe) & (sup["target_date"] <= hi)]
         if train.empty or test.empty:
             continue
-        # Label: h-Schritt-Log-Aenderung; Features bleiben Log-Lags/Rolling/Kalender.
         model = DirectLGBM(horizons=HZ).fit(
             train.assign(y=train["y_change"]), config=DIRECT_CFG, num_boost_round=300
         )
         p = model.predict(test)
         p["level_pred"] = np.exp(p["y_ref"] + p["pred"])
-        p["truth"] = np.exp(p["y"])  # y ist hier noch das Log-Level zum Ziel.
-        p["L0"] = np.exp(p["y_ref"])  # letzter beobachteter Level am Origin.
+        p["truth"] = np.exp(p["y"])  # y ist hier das Log-Level zum Ziel.
+        p["L0"] = np.exp(p["y_ref"])
         p["fold"] = i
         direct_rows.append(p)
-    direct_ld = pd.concat(direct_rows, ignore_index=True)
+    summary.update(_evaluate(pd.concat(direct_rows, ignore_index=True), "direct_logdiff"))
 
-    # ------------------------------------------------- 3) Rekursiv auf Log-Diff
+    # 3) Rekursiv auf Log-Diffs.
     sup1 = build_supervised(log_df, horizons=(1,), config=RCFG).merge(
         log_df[["series", "date", "value"]].rename(columns={"value": "y_ref"}),
         on=["series", "date"],
         how="left",
     )
     sup1 = sup1.dropna(subset=["y_ref"])
-    # Kein Series-Kategorial: der Rollout kennt nur die Historie der Serie.
     rec_model = DirectLGBM(horizons=(1,), categorical=()).fit(
         sup1.assign(y=sup1["y"] - sup1["y_ref"]), config=RCFG, num_boost_round=300
     )
     feat_cols = list(_row_from_history(np.zeros(max(R_LAGS)), pd.Timestamp("2020-01-01")))
-
-    recursive_rows = []
     log_hist = {
         s: g.sort_values("date")["value"].to_numpy()
         for s, g in log_df.groupby("series", sort=False)
     }
+    recursive_rows = []
     for i, fe in enumerate(ends, start=1):
         targets = grid[(grid > fe) & (grid <= fe + pd.DateOffset(months=max(HZ)))]
         for s, hist_full in log_hist.items():
@@ -152,54 +200,44 @@ def run() -> dict:
                 x = pd.DataFrame([row])[feat_cols]
                 d = float(rec_model.models[1].predict(x)[0])
                 changes.append(d)
-                hist.append(v_end + sum(changes))  # Prognose statt Beobachtung.
+                hist.append(v_end + sum(changes))
                 cur = cur + pd.DateOffset(months=1)
                 tgt = targets[h - 1]
-                lvl0 = float(np.exp(v_end))
                 recursive_rows.append({
                     "series": s,
                     "target_date": tgt,
                     "horizon": h,
                     "level_pred": float(np.exp(v_end + sum(changes[:h]))),
                     "truth": float(level_lookup[(s, tgt)]),
-                    "L0": lvl0,
+                    "L0": float(np.exp(v_end)),
                     "fold": i,
                 })
-    recursive_ld = pd.DataFrame(recursive_rows)
+    summary.update(_evaluate(pd.DataFrame(recursive_rows), "recursive_logdiff"))
+    return summary
 
-    # ------------------------------------------------------------------ Auswertung
-    def evaluate(preds: pd.DataFrame, name: str) -> dict[str, dict]:
-        out = {}
-        for h, grp in preds.groupby("horizon"):
-            ok = grp.dropna(subset=["level_pred", "truth"])
-            out[str(int(h))] = {
-                "mae": float(np.mean(np.abs(ok["truth"] - ok["level_pred"]))),
-                "rmse": float(np.sqrt(np.mean((ok["truth"] - ok["level_pred"]) ** 2))),
-                "dir_acc": float(
-                    np.mean(
-                        np.sign(ok["level_pred"] - ok["L0"])
-                        == np.sign(ok["truth"] - ok["L0"])
-                    )
-                ),
-            }
-        return {name: out}
 
-    summary: dict[str, dict] = {}
-    summary.update(
-        {
-            m: {
-                str(int(h)): row
-                for h, row in grp.set_index("horizon")
-                [["mae", "rmse", "smape", "dir_acc"]].to_dict("index").items()
-            }
-            for m, grp in engine.metrics_by_horizon.groupby("model")
+def _evaluate(preds: pd.DataFrame, name: str) -> dict[str, dict]:
+    out: dict[str, dict] = {name: {}}
+    for h, grp in preds.groupby("horizon"):
+        ok = grp.dropna(subset=["level_pred", "truth"])
+        out[name][str(int(h))] = {
+            "mae": float(np.mean(np.abs(ok["truth"] - ok["level_pred"]))),
+            "rmse": float(np.sqrt(np.mean((ok["truth"] - ok["level_pred"]) ** 2))),
+            "dir_acc": float(
+                np.mean(
+                    np.sign(ok["level_pred"] - ok["L0"])
+                    == np.sign(ok["truth"] - ok["L0"])
+                )
+            ),
         }
-    )
-    summary.pop("naive", None)
-    summary.update(evaluate(direct_ld, "direct_logdiff"))
-    summary.update(evaluate(recursive_ld, "recursive_logdiff"))
+    return out
 
-    # ------------------------------------------------------------------ Figur
+
+def run() -> dict:
+    all_results: dict[str, dict] = {}
+
+    fig, axes = plt.subplots(2, 3, figsize=(14.5, 8))
+    axes = axes.ravel()
     colors = {
         "direct_level": "#9d9d9d",
         "seasonal_naive": "#f4a261",
@@ -212,30 +250,40 @@ def run() -> dict:
         "recursive_logdiff": "Rekursiv auf Log-Diffs",
         "direct_logdiff": "Direkt auf Log-Diffs",
     }
-    fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.6))
-    for name in ["direct_level", "seasonal_naive", "recursive_logdiff", "direct_logdiff"]:
-        hs = sorted(summary[name], key=int)
-        axes[0].plot(hs, [summary[name][h]["mae"] for h in hs], marker="o",
-                     color=colors[name], label=labels[name])
-        axes[1].plot(hs, [summary[name][h]["dir_acc"] for h in hs], marker="o",
-                     color=colors[name], label=labels[name])
-    axes[0].set_yscale("log")
-    axes[0].set_title("MAE auf Levels (log-Skala)")
-    axes[1].set_title("Directional Accuracy")
-    axes[1].axhline(0.5, color="#888888", ls=":", lw=1)
-    for ax in axes:
-        ax.set_xlabel("Horizont (Monate)")
+
+    for idx, (name, regime) in enumerate(REGIMES.items()):
+        raw = _panel(regime, seed=33)
+        summary = _run_regime(raw)
+        all_results[name] = summary
+
+        ax = axes[idx]
+        for model in [
+            "direct_level", "seasonal_naive",
+            "recursive_logdiff", "direct_logdiff",
+        ]:
+            pts = sorted((int(h), m["mae"]) for h, m in summary[model].items())
+            ax.plot(
+                [p[0] for p in pts], [p[1] for p in pts],
+                marker="o", color=colors[model], label=labels[model],
+            )
+        ax.set_yscale("log")
+        ax.set_title(name, fontsize=11)
         ax.grid(alpha=0.3, which="both")
-        ax.legend(fontsize=8, frameon=False)
+        ax.set_xlabel("Horizont (Monate)", fontsize=9)
+
+    for ax in axes[len(REGIMES):]:
+        ax.axis("off")
+    handles, lab = axes[0].get_legend_handles_labels()
+    fig.legend(handles, lab, loc="lower center", ncol=4, frameon=False, fontsize=9)
     fig.suptitle(
-        "E6: Level- vs. Log-Differenz-Prognosen - direkte Formulierung vs. Rekursion",
-        fontsize=12,
+        "E6: Level- vs. Log-Differenz-Prognosen ueber Trend-Regime (MAE, log-Skala)",
+        fontsize=13,
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.tight_layout(rect=(0, 0.05, 1, 0.96))
     save_fig(fig, "e6_levels_vs_logdiff")
 
-    save_result("e6_levels_vs_logdiff", {"metrics_on_levels": summary})
-    return {"summary": summary}
+    save_result("e6_levels_vs_logdiff", {"metrics_on_levels": all_results})
+    return {"regimes": all_results}
 
 
 if __name__ == "__main__":
