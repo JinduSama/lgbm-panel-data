@@ -4,8 +4,11 @@ E7 - Zeitreihen-Galerie: echte Verlaeufe mit Prognosen.
 Metriken komprimieren; hier sieht man die Muster:
 (a) M4-Echtbeispiele: 6 reale Monatsserien, Prognose der letzten 18 Monate
     aus expanding Origin (globales LGBM auf Levels vs. Seasonal-Naive).
-(b) Synthetische Regime-Beispiele: je E6-Regime eine Serie mit allen vier
-    Varianten (Levels / SNaive / rekursiv Log-Diff / direkt Log-Diff).
+(b) Synthetische Regime-Beispiele: Raster aus E6-Trend-Regime x Saison-
+    staerke (ohne / schwach / stark), je Zelle eine Beispielserie mit allen
+    vier Varianten (Levels / SNaive / rekursiv Log-Diff / direkt Log-Diff).
+    Echte Unternehmensdaten haben oft keine oder nur schwache Saison -
+    starke Saisonalitaet allein waere ein unrealistischer Ausschnitt.
 
 Alle Modelle trainieren ausschliesslich auf Daten vor dem Origin; die
 geplottete Zukunft ist Wahrheit.
@@ -24,6 +27,8 @@ from lgbm_panel.features import build_supervised
 from lgbm_panel.strategies import DirectLGBM
 
 H = 18
+
+ALL_H = tuple(range(1, H + 1))  # Monatsaufloesung: 18 Punkte je Kurve, nicht 1
 
 
 # --------------------------------------------------------------------------- #
@@ -58,9 +63,9 @@ def variant_forecasts(raw: pd.DataFrame, origin: pd.Timestamp,
 
     # --- direkt auf Levels --------------------------------------------------
     padded = _pad_panel(raw, origin, ("value",))
-    sup = build_supervised(padded, horizons=(H,), config=e6.DIRECT_CFG)
+    sup = build_supervised(padded, horizons=ALL_H, config=e6.DIRECT_CFG)
     rows = _rows_at_origin(sup[sup["series"].isin(series_ids)], origin)
-    m_lvl = DirectLGBM(horizons=(H,), categorical=("series",)).fit(
+    m_lvl = DirectLGBM(horizons=ALL_H, categorical=("series",)).fit(
         sup[sup["target_date"] <= origin], config=e6.DIRECT_CFG, num_boost_round=300
     )
     p = m_lvl.predict(rows)
@@ -71,7 +76,7 @@ def variant_forecasts(raw: pd.DataFrame, origin: pd.Timestamp,
     # --- direkt auf Log-Diffs -------------------------------------------------
     log_df = raw.assign(value=np.log(raw["value"].clip(lower=1e-9)))
     log_padded = _pad_panel(log_df, origin, ("value",))
-    supl = build_supervised(log_padded, horizons=(H,), config=e6.DIRECT_CFG)
+    supl = build_supervised(log_padded, horizons=ALL_H, config=e6.DIRECT_CFG)
     supl = supl.merge(
         log_df[["series", "date", "value"]].rename(columns={"value": "y_ref"}),
         on=["series", "date"], how="left",
@@ -79,7 +84,7 @@ def variant_forecasts(raw: pd.DataFrame, origin: pd.Timestamp,
     rows_l = _rows_at_origin(supl[supl["series"].isin(series_ids)], origin)
     tr = supl[supl["target_date"] <= origin].dropna(subset=["y_ref"])
     tr = tr.assign(y_change=tr["y"] - tr["y_ref"])
-    m_ld = DirectLGBM(horizons=(H,)).fit(
+    m_ld = DirectLGBM(horizons=ALL_H).fit(
         tr.assign(y=tr["y_change"]), config=e6.DIRECT_CFG, num_boost_round=300
     )
     pl = m_ld.predict(rows_l)
@@ -131,8 +136,8 @@ def variant_forecasts(raw: pd.DataFrame, origin: pd.Timestamp,
 MODEL_STYLE = {
     "direct_level": ("Direkt Levels", "#555555", "--"),
     "seasonal_naive": ("Seasonal Naive", "#f4a261", "-."),
-    "recursive_logdiff": ("Rekursiv Log-Diff", "#d1495b", "-"),
-    "direct_logdiff": ("Direkt Log-Diff", "#00798c", "-"),
+    "direct_logdiff": ("Direkt Log-Diff", "#00798c", ":"),
+    "direct_logdiff": ("Direkt Log-Diff", "#00798c", ":"),
 }
 
 
@@ -151,7 +156,7 @@ def _plot_series(ax, raw: pd.DataFrame, s: str, origin: pd.Timestamp,
         if p is None or p.empty:
             continue
         pp = p[p["series"] == s].sort_values("target_date")
-        ax.plot(pp["target_date"], pp["level_pred"], color=color, ls=ls, lw=1.7,
+        ax.plot(pp["target_date"], pp["level_pred"], color=color, ls=ls, lw=2.0,
                 label=label, zorder=4)
     ax.axvline(origin, color="#888888", ls=":", lw=0.9)
     ax.set_title(title, fontsize=10)
@@ -182,26 +187,34 @@ def run() -> None:
     fig.tight_layout(rect=(0, 0.05, 1, 0.95))
     save_fig(fig, "e7_m4_examples")
 
-    # ---------------- (b) Regime-Beispiele ------------------------------------
-    n_reg = len(e6.REGIMES)
-    fig, axes = plt.subplots(2, 3, figsize=(15, 7.6))
-    axes_f = axes.ravel()
-    for idx, (name, regime) in enumerate(e6.REGIMES.items()):
-        raw = e6._panel(regime, seed=33)
-        s = sorted(raw["series"].unique())[0]
-        origin = raw["date"].max() - pd.DateOffset(months=H)
-        preds = variant_forecasts(raw, origin, [s])
-        _plot_series(axes_f[idx], raw, s, origin, preds, f"Regime: {name}",
-                     show_legend=False)
-    axes_f[n_reg].axis("off")
-    handles, lab = axes_f[0].get_legend_handles_labels()
-    axes_f[n_reg].legend(handles, lab, loc="center left", frameon=True, fontsize=10)
-    axes_f[n_reg].set_title("Legende", fontsize=10)
+    # ---------------- (b) Regime x Saisonalitaet ------------------------------
+    season_levels = {"ohne": (0.0, 0.0), "schwach": (4.0, 8.0), "stark": (15.0, 35.0)}
+    regimes = list({**e6.REGIMES, "stationaer": {"kind": "stationary"}}.items())
+    regimes = list(e6.REGIMES.items())
+    fig, axes = plt.subplots(
+        len(regimes), len(season_levels), figsize=(16, 3.0 * len(regimes))
+    )
+    for r, (name, regime) in enumerate(regimes):
+        for c, (sname, amp) in enumerate(season_levels.items()):
+            raw = e6._panel(
+                regime, seed=40 + c, season_amp=amp, n_series=10,
+                rel_noise=0.03, spike_prob=0.05,  # Realismus: keine sauberen Funktionen
+            )
+            s = sorted(raw["series"].unique())[0]
+            origin = raw["date"].max() - pd.DateOffset(months=H)
+            preds = variant_forecasts(raw, origin, [s])
+            _plot_series(
+                axes[r][c], raw, s, origin, preds,
+                f"{name} | Saison {sname}", show_legend=False,
+            )
+    handles, lab = axes[0][0].get_legend_handles_labels()
+    fig.legend(handles, lab, loc="lower center", ncol=5, frameon=False, fontsize=10)
     fig.suptitle(
-        f"E7b: Synthetische Trend-Regime - je eine Serie, {H}-Monats-Prognosen",
+        f"E7b: Trend-Regime × Saisonalität - je eine Beispielserie, "
+        f"{H}-Monats-Prognosen aller vier Varianten",
         fontsize=13,
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.tight_layout(rect=(0, 0.03, 1, 0.97))
     save_fig(fig, "e7_regime_examples")
 
     print("E7-Galerie fertig.")

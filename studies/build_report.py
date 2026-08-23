@@ -139,6 +139,7 @@ def main() -> None:
     e4 = load("e4_causal")
     e5 = load("e5_m4")
     e6 = load("e6_levels_vs_logdiff")
+    e8 = load("e8_combined")
     parts: list[str] = []
 
     # ------------------------------------------------------------------ TOC
@@ -154,6 +155,8 @@ def main() -> None:
         "<li><a href='#e4'>E4 &middot; Kausale Plausibilit&auml;t</a></li>"
         "<li><a href='#e5'>E5 &middot; M4-Benchmark</a></li>"
         "<li><a href='#e6'>E6 &middot; Level vs. Log-Diffs &amp; Rekursion</a></li>"
+        "<li><a href='#e8'>E8 &middot; Alles zusammen</a></li>"
+        "<li><a href='#synthese'>Gegen&uuml;berstellung</a></li>"
         "<li><a href='#takeaways'>Empfehlungen</a></li>"
         "<li><a href='#appendix'>Anhang &amp; Reproduktion</a></li>"
         "</ol></nav>"
@@ -181,6 +184,13 @@ def main() -> None:
         iv = {r["model"]: r["dir_acc"] for r in e4["intervention"]}
         e4_dir = iv.get("with_x_plan")
 
+    e8_drop = None
+    if e8:
+        mm8 = e8["metrics_on_levels"]
+        lv = mm8.get("levels", {}).get("18", {}).get("mae")
+        lx = mm8.get("logdiff_x", {}).get("18", {}).get("mae")
+        if lv and lx:
+            e8_drop = 1 - lx / lv
     kpis = []
     if e2_ratio:
         kpis.append(
@@ -203,6 +213,13 @@ def main() -> None:
         mase = e5["mase_overall"].get("lgbm")
         if mase:
             kpis.append((f"{mase:.2f}", "MASE auf 400 echten M4-Serien (&lt;1 schl&auml;gt saisonale Naive, E5)"))
+    if e8_drop:
+        kpis.append(
+            (
+                f"&minus;{100 * e8_drop:.0f}&nbsp;%",
+                "MAE bei h=18 im kombinierten DGP: Log-Diffs + Treiber statt roher Levels (E8)",
+            )
+        )
     if kpis:
         parts.append(
             '<h2 id="tldr">Kernbefunde</h2><div class="kpis">'
@@ -293,12 +310,14 @@ Wachstumsrate-Extrapolation, die bei Trendwechseln (siehe E6/Trendumkehr)
 in die alte Richtung weiterl&auml;uft, solange nichts Neues im Training war.
 </div>""")
     parts.append(fig(
-        "e7_regime_examples", "Regime-Beispiele",
-        "Je E6-Regime eine Beispielsereie mit allen vier Varianten. Besonders "
-        "in <em>trendumkehr</em>: alle Varianten laufen zun&auml;chst weiter nach "
-        "oben - nur der rekursive Rollout f&auml;ngt sich nach wenigen Monaten, "
-        "weil seine Eingaben mit der realen Abw&auml;rtsentwicklung aktualisiert "
-        "werden.",
+        "e7_regime_examples", "Regime- x Saisonalitaets-Raster",
+        "Raster aus E6-Trend-Regime (Zeilen) und Saisonstaerke (Spalten: ohne / "
+        "schwach / stark), je Zelle eine Beispielserie mit allen vier Varianten. "
+        "Ohne Saison - der Normalfall in Unternehmensdaten - bleibt "
+        "Seasonal-Naive ohne Anker (kopiert nur Rauschen); die LGBM-Varianten "
+        "unterscheiden sich vor allem &uuml;ber den Trend. In <em>trendumkehr</em> "
+        "f&auml;ngt sich nur der rekursive Rollout, weil seine Eingaben mit der "
+        "realen Abw&auml;rtsentwicklung aktualisiert werden.",
     ))
 
     # ------------------------------------------------------------------ e1
@@ -675,6 +694,86 @@ Bruch-Erkennung. Die Wahl des Prognose-Setups ist also eine Frage der
 Regime-Stabilit&auml;t, nicht eine Geschmacksfrage.
 </div>""")
 
+    # ------------------------------------------------------------------ e8
+    if e8:
+        mm8 = e8["metrics_on_levels"]
+        parts.append("""
+<h2 id="e8">E8 &middot; Alles zusammen: Trend, Treiber und Ans&auml;tze konfrontiert</h2>
+<p>E1-E7 haben Effekte <em>isoliert</em> - je Studie ein DGP f&uuml;r eine
+Frage. Hier kombiniert ein DGP alle Eigenschaften gleichzeitig: moderater
+Exponentialtrend (<strong>+5-11&nbsp;%/Jahr</strong>), moderate Saison,
+persistenter exogener Treiber <code>x</code> (AR(1) um 45, Wirkung auf den
+Folgemonat) und AR-Rauschen. Daraus ein 2&times;2-Faktor
+(Formulierung &times; Treiber-Info) plus Referenz:</p>
+<ul>
+<li><strong>levels / levels_x</strong>: direktes LGBM auf Levels, ohne/mit <code>x</code></li>
+<li><strong>logdiff / logdiff_x</strong>: direkt auf h-Schritt-Log-Aenderungen,
+ohne/mit <code>x</code></li>
+<li><strong>seasonal_naive</strong> als Referenz</li>
+</ul>
+""")
+        parts.append(setup_box(**{
+            "Serien": "60", "Länge": "144 Monate",
+            "Horizonte": "1/3/6/12/18", "Folds": "3 × 18 Monate",
+            "Trend": "+0.4-0.9 %/Monat", "Saison": "Amplitude 8-18",
+            "Treiber x": "AR(1), φ=0.9, β∈[1.5,2.5]", "Boosting": "300 Runden",
+        }))
+        parts.append(fig(
+            "e8_combined", "Alles kombiniert",
+            "Links MAE auf Levels (log-Skala): Levels starten schon bei h=1 hoch "
+            "(das Niveau-Problem), Log-Diffs fixen das, und der Treiber addiert "
+            "auf beiden Formulierungen Schub. Rechts der Gain-Anteil von x: am "
+            "kurzen Ende ~44&nbsp;%, am langen Ende ~19&nbsp;%.",
+        ))
+        parts.append("<h3>Metriken je Variante (alle Horizonte)</h3>")
+        parts.append(metrics_table(mm8, values=("mae", "dir_acc"), digits=2,
+                                   lower_is_better={"dir_acc": False}))
+        parts.append("""
+<div class="card finding">
+<strong>Befunde.</strong>
+<ul>
+<li><strong>Die Vorteile addieren sich:</strong> MAE bei h=18 l&auml;uft
+20.8 (Levels) &rarr; 16.8 (Log-Diff) &rarr; <strong>13.5 (Log-Diff + x)</strong>.
+Kein Einzeltrick gewinnt - die Kombination schl&auml;gt jede Teill&ouml;sung.</li>
+<li><strong>Der Treiber entfaltet Wirkung erst oberhalb der richtigen
+Formulierung:</strong> Auf Levels bringt x nur ~8&nbsp;% (20.8&rarr;19.1),
+auf Log-Diffs ~20&nbsp;% (16.8&rarr;13.5). Solange das Modell mit dem Niveau
+k&auml;mpft, frisst das Trend-Problem den Nutzen des Fuehrungssignals auf.</li>
+<li><strong>x wirkt vor allem kurzfristig:</strong> Gain-Anteil ~44&nbsp;% bei
+h=1 gegen ~19&nbsp;% bei h=18. Fuer den Folgemonat ist der aktuelle
+Treiberstand ein starkes Signal; fuer 18 Monate dominieren Lags und Trend.</li>
+<li><strong>Directional Accuracy in derselben Rangfolge:</strong> h=1:
+82&nbsp;% (logdiff_x) vs 61&nbsp;% (levels).</li>
+</ul>
+</div>""")
+
+    # ------------------------------------------------------------------ synthese
+    parts.append("""
+<h2 id="synthese">Gegen&uuml;berstellung: welche Eigenschaft erzwingt welche Entscheidung?</h2>
+<p>Die Studien im Verbund - jede Zeile eine Dateneigenschaft, daneben der
+empirische Beleg und die Konsequenz f&uuml;r das Setup:</p>
+<table>
+<thead><tr><td>Eigenschaft</td><th>Beleg</th><th>Konsequenz</th></tr></thead>
+<tbody>
+<tr><td>Starker exponentieller Trend</td><td>E2, E6-stark</td><td>Log-Transformation + h-Schritt-Differenz als Label; sonst bis 23&times; Fehler bei h=18</td></tr>
+<tr><td>Kein bis schwacher Trend</td><td>E6-kein/-leicht</td><td>Transformation unn&ouml;tig, Levels reichen - Komplexit&auml;t sparen</td></tr>
+<tr><td>Additiver (linearer) Trend</td><td>E6-linear</td><td>YoY-Lags interpolieren ihn; Levels vertretbar, Log-Diffs nie schlechter</td></tr>
+<tr><td>Saisonalit&auml;t stark</td><td>E1, E7-Galerie</td><td>Lag-12 + rollende Fenster tragen sie; Seasonal-Naive nur als Referenz</td></tr>
+<tr><td>Saisonalit&auml;t fehlt/schwach</td><td>E7b-Raster</td><td>Empfehlungen bleiben gleich; Seasonal-Naive verliert ihren Anker komplett</td></tr>
+<tr><td>Exogener Treiber, stabiles Regime</td><td>E3, E8</td><td>Zusatzgewinn (~20&nbsp;% MAE bei h=18), am kurzen Horizont am gr&ouml;&szlig;ten; erkl&auml;rt zudem das Warum</td></tr>
+<tr><td>Treiber-Intervention / Szenario</td><td>E4</td><td>Nur ein Modell mit kausalem Treiber + bekanntem Pfad trackt den Eingriff</td></tr>
+<tr><td>Strukturbruch im Trend</td><td>E6-Umkehr</td><td>Direkt-Formulierung friert das alte Regime ein; Rollout/kurzes Retraining adaptiert</td></tr>
+<tr><td>Viele verwandte Serien (Panel)</td><td>E5 (M4)</td><td>Globales Lernen schl&auml;gt Naive-Baselines auch auf echten Daten robust</td></tr>
+</tbody></table>
+<div class="card finding">
+<strong>Der rote Faden.</strong> Kein Ergebnis widerspricht einem anderen -
+die Effekte stapeln sich: <em>Formulierung zuerst</em> (Log-Diffs unter Trend),
+<em>dann Features</em> (kausale Treiber, Kalender), <em>dann Strategie</em>
+(direkt statt rekursiv; nach Br&uuml;chen Adaptierung). E8 zeigt in einem
+DGP, der alle Eigenschaften zugleich hat: 35&nbsp;% weniger Fehler als rohe
+Levels, wenn man alles kombiniert.
+</div>
+""")
     # ------------------------------------------------------------------ takeaways
     parts.append("""
 <h2 id="takeaways">Empfehlungen f&uuml;rs Praxis-Playbook</h2>
@@ -722,7 +821,8 @@ invalidiert still die Vergleichsstudie).</li>
 <tr><td>E4</td><td>Kausalit&auml;t/Intervention</td><td>DGP mit OU-Treiber</td><td>LGBM (3 Varianten)</td></tr>
 <tr><td>E5</td><td>Realer Benchmark</td><td>M4, 400 Serien</td><td>LGBM, SNaive, Naive</td></tr>
 <tr><td>E6</td><td>Level vs. Log-Diff, Rekursion, Trend-Regime inkl. Umkehr</td><td>5 Regime, exponentiell/linear/Bruch</td><td>LGBM (3 Varianten), SNaive</td></tr>
-<tr><td>E7</td><td>Zeitreihen-Galerie</td><td>M4-Auswahl + je Regime 1 Serie</td><td>LGBM (3 Varianten), SNaive</td></tr>
+<tr><td>E7</td><td>Galerie: Verl&auml;ufe mit Prognosen</td><td>M4-Auswahl + Raster Regime &times; Saison</td><td>LGBM (3 Varianten), SNaive</td></tr>
+<tr><td>E8</td><td>Alles kombiniert: Trend + Saison + Treiber, 2&times;2 Ans&auml;tze</td><td>1 realistisches DGP (alle Eigenschaften)</td><td>LGBM (4 Zellen), SNaive</td></tr>
 </tbody></table>
 <h3>Ausf&uuml;hren</h3>
 <pre><code>uv sync
@@ -733,6 +833,7 @@ uv run python studies/e4_causal.py
 uv run python studies/e5_m4.py
 uv run python studies/e6_levels_vs_logdiff.py
 uv run python studies/e7_gallery.py
+uv run python studies/e8_combined.py
 uv run python studies/build_report.py   # diesen Report neu bauen</code></pre>
 <p>Jede Studie schreibt <code>reports/results/&lt;name&gt;.json</code> und
 Abbildungen nach <code>reports/assets/</code>. Der Report embeddet beides

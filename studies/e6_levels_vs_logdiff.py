@@ -61,20 +61,32 @@ REGIMES: dict[str, dict] = {
 }
 
 
-def _panel(regime: dict, seed: int) -> pd.DataFrame:
+def _panel(
+    regime: dict,
+    seed: int,
+    season_amp: tuple[float, float] = (15.0, 35.0),
+    n_series: int = N_SERIES,
+    rel_noise: float = 0.0,
+    spike_prob: float = 0.0,
+) -> pd.DataFrame:
     """
     Panel fuer ein Regime (lokal gebaut, Spiegel von make_panel).
 
-    Bewusst hohe Basis-Level (>= 80): Saison (bis 35 abs.) und Rauschen
-    duerfen nie negative Werte erzeugen - sonst produziert der Log
-    Clipping-Spikes und die Log-Differenz-VariantenMuell-Labels.
+    Bewusst hohe Basis-Level (>= 80): Saison und Rauschen duerfen nie
+    negative Werte erzeugen - sonst produziert der Log Clipping-Spikes
+    und die Log-Differenz-Varianten Muell-Labels.
+    ``season_amp`` steuert die Saisonstaerke ((0, 0) = ohne Saison) und
+    wird von der E7-Galerie fuer schwach/saisonsfreie Serien genutzt.
+    ``rel_noise``/``spike_prob`` (Galerie-Realismus) addieren multiplikatives
+    Rauschen bzw. Ausreisser-Spikes; Defaults 0 halten das E6-DGP reproduzierbar.
+    Kind "stationaer" (nur Galerie): mean-reverting um konstantes Niveau.
     """
     rng = np.random.default_rng(seed)
     dates = pd.date_range("2015-01-01", periods=N_PERIODS, freq="MS")
     frames = []
-    for s in range(N_SERIES):
+    for s in range(n_series):
         t = np.arange(N_PERIODS, dtype=float)
-        amp = rng.uniform(15.0, 35.0)
+        amp = rng.uniform(*season_amp)
         phase = rng.uniform(0, 2 * np.pi)
         eps = np.zeros(N_PERIODS)
         shocks = rng.normal(0, rng.uniform(2.0, 5.0), N_PERIODS)
@@ -82,20 +94,38 @@ def _panel(regime: dict, seed: int) -> pd.DataFrame:
             eps[i] = 0.3 * eps[i - 1] + shocks[i]
         season = amp * np.sin(2 * np.pi * t / 12.0 + phase)
 
-        if regime["kind"] == "linear":
+        if regime["kind"] == "stationary":
+            mu = rng.uniform(100, 250)
+            phi = rng.uniform(0.7, 0.95)
+            sd_rel = rng.uniform(0.02, 0.05)
+            dev = np.zeros(N_PERIODS)
+            dsteps = rng.normal(0, 1.0, N_PERIODS)
+            for i in range(1, N_PERIODS):
+                dev[i] = phi * dev[i - 1] + dsteps[i]
+            base = mu * (1.0 + sd_rel * dev)
+        elif regime["kind"] == "linear":
             level = rng.uniform(150, 400)
             slope = rng.uniform(*regime["slope"])
-            y = level + slope * t + season + eps
+            base = level + slope * t
         elif regime["kind"] == "reversal":
             # Wachstum kippt am Stichtag ins Negative (-60 % der Rate).
             level = rng.uniform(120, 350)
             g_up = rng.uniform(*regime["growth"])
             g = np.where(t < regime["switch"], g_up, -0.6 * g_up)
-            y = level * np.exp(np.cumsum(g)) + season + eps
+            base = level * np.exp(np.cumsum(g))
         else:
             level = rng.uniform(80, 400)
             growth = rng.uniform(*regime["growth"])
-            y = level * np.exp(growth * t) + season + eps
+            base = level * np.exp(growth * t)
+
+        y = base + season + eps
+        if rel_noise > 0:
+            y = y + base * rng.normal(0.0, rel_noise, N_PERIODS)
+        if spike_prob > 0:
+            hits = rng.random(N_PERIODS) < spike_prob
+            y = y + hits * base * rng.uniform(0.05, 0.15, N_PERIODS) * rng.choice(
+                [-1.0, 1.0], N_PERIODS
+            )
 
         frames.append(pd.DataFrame({"series": f"S{s:03d}", "date": dates, "value": y}))
     return pd.concat(frames, ignore_index=True)
