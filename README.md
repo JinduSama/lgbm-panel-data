@@ -35,6 +35,8 @@ JSON metrics) land in `reports/`. The self-contained insight report is
 | `studies/e11_m4_best.py` | Best formulation vs. classical local models on M4 (fixed origin) |
 | `studies/e12_intervals.py` | Prediction intervals: quantile regression vs. split-conformal |
 | `studies/e13_objective_ablation.py` | Training objective ablation (L2/L1/Huber/Quantile) |
+| `studies/e14_chronos_m4.py` | Chronos-Bolt / Chronos-2 zero-shot vs. trained arms on M4 |
+| `studies/e15_chronos_exog.py` | Budget plans as future covariates: LGBM vs. Chronos-2 |
 
 Backtest protocol (see the report's methods box): folds are anchored per
 series, baselines forecast rolling-origin from each row's own cutoff
